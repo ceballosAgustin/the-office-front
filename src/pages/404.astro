@@ -1,0 +1,28 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Página no encontrada — The Office BA"
+  description="La página o producto que estás buscando no existe o fue trasladado."
+>
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-24 sm:py-32 text-center space-y-5">
+    <span class="inline-block text-xs font-semibold uppercase tracking-[0.22em] text-brand-dark/40">
+      Error 404
+    </span>
+    <h1 class="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-brand-dark">
+      Página no encontrada
+    </h1>
+    <p class="text-sm sm:text-base text-brand-dark/65 max-w-md mx-auto leading-relaxed pt-1">
+      El recurso o producto solicitado no se encuentra disponible. Verificá la dirección o regresá al catálogo.
+    </p>
+    <div class="pt-6">
+      <a
+        href="/"
+        class="inline-flex items-center justify-center px-6 py-3 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] bg-brand-dark hover:opacity-85 transition-opacity rounded-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 shadow-xs"
+      >
+        ← Volver a la página principal
+      </a>
+    </div>
+  </div>
+</Layout>

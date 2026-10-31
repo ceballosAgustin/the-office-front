@@ -1,0 +1,59 @@
+---
+interface Props {
+  title: string;
+  price: number;
+  image: string;
+  category?: string;
+  slug?: string;
+  id?: string | number;
+  badge?: string;
+}
+
+const { title, price, image, category, slug, id, badge } = Astro.props;
+const productHref = `/products/${id ?? slug ?? '#'}`;
+
+const formattedPrice = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  minimumFractionDigits: 0,
+}).format(price);
+---
+
+<article class="group relative flex flex-col">
+  <a
+    href={productHref}
+    class="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/20 rounded-xs"
+    aria-label={`${title}${category ? ' — ' + category : ''}, ${formattedPrice}`}
+  >
+    <!-- Image Canvas (Consistent 4:5 ratio, neutral light background, no harsh shadows) -->
+    <div class="aspect-[4/5] w-full overflow-hidden bg-[#F2F2F0] relative">
+      <img
+        src={image}
+        alt={title}
+        loading="lazy"
+        decoding="async"
+        class="w-full h-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03] select-none"
+      />
+      {badge && (
+        <span class="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 text-[8px] sm:text-[9px] md:text-[10px] font-semibold uppercase tracking-[0.18em] px-1.5 py-0.5 sm:px-2 sm:py-0.5 bg-[#1D110D]/90 text-[#FAFAFA] backdrop-blur-xs">
+          {badge}
+        </span>
+      )}
+    </div>
+
+    <!-- Product Meta -->
+    <div class="mt-2.5 sm:mt-3 flex flex-col">
+      {category && (
+        <span class="text-[9px] sm:text-[10px] md:text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-dark/45 truncate">
+          {category}
+        </span>
+      )}
+      <h3 class="text-xs sm:text-[13px] md:text-sm font-medium tracking-tight text-brand-dark group-hover:text-brand-dark/70 transition-colors duration-150 mt-0.5 line-clamp-1 leading-snug">
+        {title}
+      </h3>
+      <p class="text-xs sm:text-[13px] md:text-sm font-semibold tracking-tight text-brand-dark tabular-nums mt-0.5">
+        {formattedPrice}
+      </p>
+    </div>
+  </a>
+</article>

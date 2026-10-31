@@ -1,0 +1,175 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ProductGallery from '../../components/react/ProductGallery.jsx';
+import ProductPurchaseSection from '../../components/react/ProductPurchaseSection.jsx';
+import { products, formatPrice, type Product } from '../../data/products';
+
+export async function getStaticPaths() {
+  return products.map((product) => ({
+    params: { slug: product.slug },
+    props: { product },
+  }));
+}
+
+interface Props {
+  product: Product;
+}
+
+const { product } = Astro.props;
+
+if (!product) {
+  return Astro.redirect('/404');
+}
+
+const formattedPrice = formatPrice(product.price);
+---
+
+<Layout
+  title={`${product.title} — The Office BA`}
+  description={product.description}
+>
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-10 md:py-14">
+
+    <!-- Breadcrumbs Navigation -->
+    <nav class="mb-6 sm:mb-8" aria-label="Breadcrumb">
+      <ol class="flex items-center flex-wrap gap-2 text-xs text-brand-dark/50">
+        <li>
+          <a
+            href="/"
+            class="hover:text-brand-dark transition-colors duration-150 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+          >
+            Home
+          </a>
+        </li>
+        <li aria-hidden="true" class="select-none text-brand-dark/30">/</li>
+        <li>
+          <a
+            href="/#catalogo"
+            class="hover:text-brand-dark transition-colors duration-150 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+          >
+            {product.category}
+          </a>
+        </li>
+        <li aria-hidden="true" class="select-none text-brand-dark/30">/</li>
+        <li
+          class="font-medium text-brand-dark truncate max-w-[200px] sm:max-w-none"
+          aria-current="page"
+        >
+          {product.title}
+        </li>
+      </ol>
+    </nav>
+
+    <!-- Main Product Layout (2 columns in desktop) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 items-start">
+
+      <!-- Left Column: Image Gallery (58% width in desktop) -->
+      <section class="lg:col-span-7 w-full" aria-label="Galería de imágenes">
+        <ProductGallery
+          client:load
+          images={product.images}
+          title={product.title}
+        />
+      </section>
+
+      <!-- Right Column: Product Meta, Selection & Purchase (42% width) -->
+      <section class="lg:col-span-5 w-full lg:sticky lg:top-24 space-y-6" aria-label="Información del producto">
+        
+        <!-- Header Info -->
+        <div class="space-y-2 border-b border-brand-dark/[0.08] pb-5">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/50">
+              {product.category}
+            </span>
+            {product.badge && (
+              <span class="text-[10px] font-semibold uppercase tracking-[0.18em] px-2 py-0.5 bg-brand-dark text-[#FAFAFA] rounded-xs">
+                {product.badge}
+              </span>
+            )}
+          </div>
+
+          <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-brand-dark leading-[1.1]">
+            {product.title}
+          </h1>
+
+          <p class="text-xl sm:text-2xl font-semibold tracking-tight text-brand-dark tabular-nums pt-1">
+            {formattedPrice}
+          </p>
+        </div>
+
+        <!-- Short Editorial Description -->
+        <div class="space-y-3">
+          <h2 class="sr-only">Descripción</h2>
+          <p class="text-sm sm:text-[15px] text-brand-dark/75 leading-relaxed">
+            {product.description}
+          </p>
+        </div>
+
+        <!-- Interactive Purchase Section (Sizes, Colors, Add to Cart) -->
+        <ProductPurchaseSection
+          client:load
+          availableSizes={product.availableSizes}
+          colors={product.colors}
+        />
+
+        <!-- Details & Craftsmanship (Rendered only when product has details) -->
+        {product.details && product.details.length > 0 && (
+          <div class="border-t border-brand-dark/[0.08] pt-5 space-y-3">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-brand-dark">
+              Detalles de confección
+            </h3>
+            <ul class="space-y-1.5 text-xs sm:text-[13px] text-brand-dark/70 leading-relaxed">
+              {product.details.map((detail) => (
+                <li class="flex items-start gap-2">
+                  <span class="select-none text-brand-dark/40">•</span>
+                  <span>{detail}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <!-- Shipping & Support Micro-info -->
+        <div class="border-t border-brand-dark/[0.08] pt-4 grid grid-cols-2 gap-3 text-[11px] text-brand-dark/50">
+          <div class="space-y-0.5">
+            <p class="font-medium text-brand-dark/80">Envíos a todo el país</p>
+            <p>Despacho seguro desde Buenos Aires</p>
+          </div>
+          <div class="space-y-0.5">
+            <p class="font-medium text-brand-dark/80">Cambios y garantía</p>
+            <p>Hasta 30 días para cambios de talle</p>
+          </div>
+        </div>
+
+      </section>
+
+    </div>
+
+    <!-- Back to Catalog Link -->
+    <div class="mt-16 pt-8 border-t border-brand-dark/[0.08]">
+      <a
+        href="/#catalogo"
+        class="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold tracking-tight text-brand-dark hover:text-brand-dark/60 transition-colors duration-150 py-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="shrink-0"
+          aria-hidden="true"
+        >
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        Volver al catálogo completo
+      </a>
+    </div>
+
+  </div>
+</Layout>

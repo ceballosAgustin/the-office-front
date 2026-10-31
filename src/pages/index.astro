@@ -1,11 +1,85 @@
 ---
-import Welcome from '../components/Welcome.astro';
 import Layout from '../layouts/Layout.astro';
-
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+import CatalogSection from '../components/react/CatalogSection.jsx';
 ---
 
-<Layout>
-	<Welcome />
+<Layout
+  title="The Office BA — Contemporary Streetwear & Footwear"
+  description="Colección de indumentaria urbana contemporánea. Siluetas estructuradas, telas pesadas y calzado curado. Envíos a todo el país."
+>
+  <!-- Editorial Hero Section -->
+  <section
+    class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8 pb-8 sm:pt-12 sm:pb-10 md:pt-16 md:pb-14 lg:pt-20 lg:pb-16"
+  >
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-end">
+      <!-- Primary Editorial Block -->
+      <div class="lg:col-span-8 space-y-3 sm:space-y-4">
+        <div class="flex items-center gap-2.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-brand-dark/80"></span>
+          <p
+            class="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.22em] text-brand-dark/50"
+          >
+            Edición Permanente — Drop 01
+          </p>
+        </div>
+        <h1
+          class="text-3xl sm:text-5xl md:text-6xl lg:text-[68px] font-bold tracking-[-0.035em] text-brand-dark leading-[1.02]"
+        >
+          Indumentaria urbana.<br />
+          <span class="text-brand-dark/35 font-normal"
+            >Siluetas con peso y corte contemporáneo.</span
+          >
+        </h1>
+        <p
+          class="text-sm sm:text-base text-brand-dark/65 max-w-xl leading-relaxed pt-1"
+        >
+          Piezas concebidas en gramajes pesados y calce relajado. Colección
+          curada para el ritmo diario sin concesiones en materiales ni acabado.
+        </p>
+      </div>
+
+      <!-- Action & Meta Block -->
+      <div
+        class="lg:col-span-4 flex flex-row lg:flex-col justify-between lg:justify-end items-start lg:items-end gap-4 pt-2 lg:pt-0"
+      >
+        <div
+          class="hidden lg:block text-right space-y-1 pb-4 border-b border-brand-dark/10 w-full"
+        >
+          <p
+            class="text-[11px] font-mono uppercase tracking-widest text-brand-dark/40"
+          >
+            Buenos Aires / Studio
+          </p>
+          <p class="text-xs text-brand-dark/70 font-medium">
+            Envíos a todo el país
+          </p>
+        </div>
+        <a
+          href="#catalogo"
+          class="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold tracking-tight text-brand-dark border-b border-brand-dark/80 pb-1 hover:border-brand-dark/30 hover:text-brand-dark/70 transition-all duration-200 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/20 rounded-xs"
+        >
+          Explorar catálogo
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="transition-transform duration-200 group-hover:translate-x-0.5 group-hover:translate-y-0.5"
+            aria-hidden="true"
+          >
+            <path d="M7 7h10v10"></path>
+            <path d="M7 17 17 7"></path>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Catalog Connected to Backend API -->
+  <CatalogSection client:load />
 </Layout>

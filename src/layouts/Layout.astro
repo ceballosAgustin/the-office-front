@@ -1,23 +1,182 @@
-<!doctype html>
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro Basics</title>
-	</head>
-	<body>
-		<slot />
-	</body>
-</html>
+---
+import "../styles/global.css";
+import Navbar from "../components/ui/Navbar.astro";
 
-<style>
-	html,
-	body {
-		margin: 0;
-		width: 100%;
-		height: 100%;
-	}
-</style>
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "The Office BA — Friends and Family",
+  description = "Colección de indumentaria urbana contemporánea. Siluetas estructuradas, telas pesadas y calzado curado. Envíos a todo el país.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="es" class="scroll-smooth">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#FAFAFA" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+  </head>
+  <body
+    class="flex flex-col min-h-screen selection:bg-brand-dark selection:text-[#FAFAFA]"
+  >
+    <Navbar />
+
+    <main class="flex-1">
+      <slot />
+    </main>
+
+    <!-- Minimalist Editorial Footer -->
+    <footer
+      class="border-t border-brand-dark/[0.08] mt-auto bg-[#FAFAFA]/70 backdrop-blur-xs"
+    >
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 md:py-16">
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
+          <!-- Brand Column with elevated BA -->
+          <div class="md:col-span-6 space-y-3">
+            <span
+              class="text-sm font-bold tracking-tight text-brand-dark uppercase inline-flex items-baseline"
+            >
+              THE OFFICE
+              <sup
+                class="text-[8px] font-bold relative -top-1 ml-0.5 leading-none text-brand-dark"
+                >BA</sup
+              >
+            </span>
+            <p
+              class="text-xs sm:text-sm text-brand-dark/55 max-w-sm leading-relaxed"
+            >
+              Estudio de indumentaria urbana y calzado contemporáneo. Piezas
+              desarrolladas con precisión formal y materiales duraderos.
+            </p>
+          </div>
+
+          <!-- Navigation Links in English -->
+          <div class="md:col-span-3 space-y-3">
+            <h4
+              class="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/40"
+            >
+              Collection
+            </h4>
+            <ul class="space-y-2">
+              <li>
+                <a
+                  href="#catalogo"
+                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+                >
+                  New Arrivals
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#catalogo"
+                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+                >
+                  Shop All
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#catalogo"
+                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+                >
+                  Tops
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#catalogo"
+                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+                >
+                  Bottoms
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#catalogo"
+                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+                >
+                  Sneakers
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#catalogo"
+                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+                >
+                  Accessories
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Service & Help -->
+          <div class="md:col-span-3 space-y-3">
+            <h4
+              class="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/40"
+            >
+              Info & Support
+            </h4>
+            <ul class="space-y-2">
+              <li>
+                <a
+                  href="#catalogo"
+                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+                >
+                  Shipping Info
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#catalogo"
+                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+                >
+                  Returns & Exchanges
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#catalogo"
+                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+                >
+                  Customer Care
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Bottom bar -->
+        <div
+          class="mt-12 pt-6 border-t border-brand-dark/[0.06] flex flex-col sm:flex-row items-center justify-between gap-4"
+        >
+          <p class="text-[11px] text-brand-dark/40">
+            &copy; {new Date().getFullYear()} The Office BA. All rights reserved.
+          </p>
+          <p
+            class="text-[11px] font-mono tracking-wider text-brand-dark/30 uppercase"
+          >
+            Buenos Aires, AR
+          </p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

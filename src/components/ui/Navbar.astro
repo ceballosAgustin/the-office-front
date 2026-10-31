@@ -1,0 +1,129 @@
+---
+import CartButton from '../react/CartButton.jsx';
+
+const navLinks = [
+  { label: 'New Arrivals', href: '#catalogo' },
+  { label: 'Shop All', href: '#catalogo' },
+  { label: 'Tops', href: '#catalogo' },
+  { label: 'Bottoms', href: '#catalogo' },
+  { label: 'Sneakers', href: '#catalogo' },
+  { label: 'Accessories', href: '#catalogo' },
+];
+---
+
+<header class="sticky top-0 z-50 bg-[#FAFAFA]/80 backdrop-blur-md backdrop-saturate-150 border-b border-[#1D110D]/[0.06] transition-colors duration-200">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between h-14 md:h-16">
+
+      <!-- Left: Brand Logo The Office BA -->
+      <div class="flex items-center justify-start shrink-0">
+        <a
+          href="/"
+          class="inline-flex items-center gap-2 py-1 text-brand-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/20 rounded-xs transition-opacity duration-150 hover:opacity-75"
+          aria-label="The Office BA — Return to home"
+        >
+          <span class="inline-flex items-baseline text-base md:text-[17px] font-bold tracking-[-0.03em] uppercase select-none">
+            THE OFFICE
+            <sup class="text-[9px] md:text-[10px] font-bold tracking-tight relative -top-1.5 md:-top-2 ml-0.5 leading-none text-brand-dark">BA</sup>
+          </span>
+          <span class="hidden xl:inline-block text-[9px] font-mono uppercase tracking-[0.2em] text-brand-dark/35 border-l border-brand-dark/15 pl-2">
+            Friends & Family
+          </span>
+        </a>
+      </div>
+
+      <!-- Center: Navigation Links in English (Desktop) -->
+      <nav class="hidden lg:flex items-center justify-center gap-5 xl:gap-7" aria-label="Main Navigation">
+        {navLinks.map((link) => (
+          <a
+            href={link.href}
+            class="text-[13px] font-medium tracking-tight text-brand-dark/70 hover:text-brand-dark transition-colors duration-150 py-1 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/20 rounded-xs"
+          >
+            {link.label}
+          </a>
+        ))}
+      </nav>
+
+      <!-- Right: Cart & Mobile Menu Toggle -->
+      <div class="flex items-center justify-end gap-1 shrink-0">
+        <CartButton client:load />
+
+        <!-- Mobile Menu Button -->
+        <button
+          type="button"
+          id="mobile-menu-toggle"
+          class="lg:hidden flex items-center justify-center w-11 h-11 rounded-xs text-brand-dark transition-opacity duration-150 hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 active:scale-95 cursor-pointer"
+          aria-expanded="false"
+          aria-controls="mobile-nav-menu"
+          aria-label="Toggle navigation menu"
+        >
+          <!-- Hamburger icon (2 lines) -->
+          <svg id="menu-icon-open" class="w-5 h-5 block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="8" x2="20" y2="8"></line>
+            <line x1="4" y1="16" x2="20" y2="16"></line>
+          </svg>
+          <!-- Close icon (X) -->
+          <svg id="menu-icon-close" class="w-5 h-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Mobile Dropdown Navigation -->
+  <div
+    id="mobile-nav-menu"
+    class="hidden lg:hidden border-t border-[#1D110D]/[0.06] bg-[#FAFAFA]/95 backdrop-blur-md px-6 py-5 transition-all duration-200"
+  >
+    <nav class="flex flex-col space-y-3" aria-label="Mobile Navigation">
+      {navLinks.map((link) => (
+        <a
+          href={link.href}
+          class="mobile-nav-link text-sm font-medium tracking-tight text-brand-dark/80 hover:text-brand-dark py-1.5 border-b border-brand-dark/[0.04] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/20 rounded-xs"
+        >
+          {link.label}
+        </a>
+      ))}
+    </nav>
+  </div>
+</header>
+
+<script>
+  const toggleBtn = document.getElementById('mobile-menu-toggle');
+  const mobileMenu = document.getElementById('mobile-nav-menu');
+  const iconOpen = document.getElementById('menu-icon-open');
+  const iconClose = document.getElementById('menu-icon-close');
+  const mobileLinks = document.querySelectorAll('.mobile-nav-link');
+
+  if (toggleBtn && mobileMenu && iconOpen && iconClose) {
+    const toggleMenu = () => {
+      const isExpanded = toggleBtn.getAttribute('aria-expanded') === 'true';
+      toggleBtn.setAttribute('aria-expanded', String(!isExpanded));
+      mobileMenu.classList.toggle('hidden');
+      iconOpen.classList.toggle('hidden');
+      iconClose.classList.toggle('hidden');
+    };
+
+    toggleBtn.addEventListener('click', toggleMenu);
+
+    // Close menu when clicking on any link
+    mobileLinks.forEach((link) => {
+      link.addEventListener('click', () => {
+        if (!mobileMenu.classList.contains('hidden')) {
+          toggleMenu();
+        }
+      });
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !mobileMenu.classList.contains('hidden')) {
+        toggleMenu();
+        toggleBtn.focus();
+      }
+    });
+  }
+</script>

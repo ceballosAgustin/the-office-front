@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --color-brand-dark: #1D110D;
+  --color-brand-light: #FAFAFA;
+  --color-brand-alt: #FCFCFC;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #FAFAFA;
+    background-image:
+      linear-gradient(180deg, rgba(250, 250, 250, 0.4) 0%, rgba(252, 252, 252, 0.55) 100%),
+      url('/marble-bg.webp');
+    background-size: 100% auto;
+    background-position: top center;
+    background-repeat: repeat-y;
+    color: #1D110D;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  @media (min-width: 1024px) {
+    body {
+      background-size: cover;
+      background-attachment: fixed;
+    }
+  }
+
+  ::selection {
+    background-color: #1D110D;
+    color: #FAFAFA;
+  }
+
+  /* Accessible focus indicators */
+  :focus-visible {
+    outline: 2px solid #1D110D;
+    outline-offset: 2px;
+  }
+}

@@ -1,0 +1,27 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ProductDetailView from '../../components/react/ProductDetailView.jsx';
+import { getAllProductPaths } from '../../services/api';
+
+export async function getStaticPaths() {
+  const dynamicIds = await getAllProductPaths();
+  if (dynamicIds.length > 0) {
+    return dynamicIds.map((id) => ({
+      params: { id },
+    }));
+  }
+  // Pre-render IDs 1-12 as fallback so static build succeeds when backend is offline
+  return Array.from({ length: 12 }, (_, i) => ({
+    params: { id: String(i + 1) },
+  }));
+}
+
+const { id } = Astro.params;
+---
+
+<Layout
+  title={`Detalle de Producto #${id} — The Office BA`}
+  description="Prenda exclusiva de la colección The Office BA. Calce contemporáneo, confección estructurada y despacho seguro."
+>
+  <ProductDetailView client:load productId={id} />
+</Layout>
