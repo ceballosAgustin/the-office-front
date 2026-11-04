@@ -1,0 +1,24 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import AdminProductFormView from '../../../../components/react/admin/AdminProductFormView.jsx';
+import { getAllProductPaths } from '../../../../services/api';
+
+export async function getStaticPaths() {
+  const dynamicIds = await getAllProductPaths();
+  const fallbackIds = Array.from({ length: 100 }, (_, i) => String(i + 1));
+  const uniqueIds = Array.from(
+    new Set([...dynamicIds.map(String), ...fallbackIds])
+  );
+
+  return uniqueIds.map((id) => ({
+    params: { id },
+  }));
+}
+
+const { id } = Astro.params;
+---
+
+<AdminLayout title={`Editar Producto #${id} — Admin The Office BA`}>
+  <AdminProductFormView client:load mode="edit" productId={id} />
+</AdminLayout>
+

@@ -1,0 +1,9 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import AdminProductFormView from '../../../components/react/admin/AdminProductFormView.jsx';
+---
+
+<AdminLayout title="Nuevo Producto — Admin The Office BA">
+  <AdminProductFormView client:load mode="create" />
+</AdminLayout>
+

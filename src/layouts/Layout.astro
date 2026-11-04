@@ -170,11 +170,23 @@ const {
           <p class="text-[11px] text-brand-dark/40">
             &copy; {new Date().getFullYear()} The Office BA. All rights reserved.
           </p>
-          <p
-            class="text-[11px] font-mono tracking-wider text-brand-dark/30 uppercase"
-          >
-            Buenos Aires, AR
-          </p>
+          <div class="flex items-center gap-3.5">
+            <a
+              href="/admin/login"
+              class="text-[11px] font-mono tracking-wider text-brand-dark/40 hover:text-brand-dark transition-colors duration-150 uppercase focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+            >
+              Admin Access
+            </a>
+            <span
+              class="text-[11px] text-brand-dark/20 select-none"
+              aria-hidden="true">/</span
+            >
+            <p
+              class="text-[11px] font-mono tracking-wider text-brand-dark/30 uppercase"
+            >
+              Buenos Aires, AR
+            </p>
+          </div>
         </div>
       </div>
     </footer>

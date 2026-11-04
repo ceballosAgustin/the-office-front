@@ -1,18 +1,43 @@
 import { useState } from 'react';
 import { useCart } from '../../store/cartStore';
 
+const SINGLE_SIZE_LABELS = new Set([
+  'unico',
+  'único',
+  'one size',
+  'onesize',
+  'u',
+  'sin talle',
+  'talle unico',
+  'talle único',
+]);
+
+function isSingleSizeVariantName(size) {
+  if (!size || typeof size !== 'string') return false;
+  return SINGLE_SIZE_LABELS.has(size.trim().toLowerCase());
+}
+
 export default function ProductPurchaseSection({ product }) {
   const { items, addItem } = useCart();
   const [selectedVariantId, setSelectedVariantId] = useState(null);
   const [validationError, setValidationError] = useState(null);
   const [addedFeedback, setAddedFeedback] = useState(null);
 
-  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const variants = Array.isArray(product?.variants)
+    ? product.variants.filter((v) => v && v.isActive !== false && v.id != null)
+    : [];
   const hasVariants = variants.length > 0;
   const hasAvailableStock = variants.some((v) => (v.stock ?? 0) > 0);
 
-  const selectedVariant =
-    variants.find((v) => v.id === selectedVariantId) || null;
+  // Detect products that do not use physical apparel sizes (single 'Único' or 'One Size' variant)
+  const isSingleSizeProduct =
+    variants.length === 1 && isSingleSizeVariantName(variants[0].size);
+
+  const selectedVariant = isSingleSizeProduct
+    ? (variants[0].stock ?? 0) > 0
+      ? variants[0]
+      : null
+    : variants.find((v) => v.id === selectedVariantId) || null;
 
   const handleVariantSelect = (variant) => {
     if ((variant.stock ?? 0) <= 0) return;
@@ -24,7 +49,7 @@ export default function ProductPurchaseSection({ product }) {
   const handleAddToCart = () => {
     if (!hasVariants || !hasAvailableStock) {
       setValidationError(
-        'Este producto no posee variantes con stock disponible en este momento.'
+        'Este producto no posee variantes activas con stock disponible en este momento.'
       );
       return;
     }
@@ -45,7 +70,9 @@ export default function ProductPurchaseSection({ product }) {
       currentQtyInCart + 1 > selectedVariant.stock
     ) {
       setValidationError(
-        `Alcanzaste el límite de stock disponible (${selectedVariant.stock} u.) para el talle ${selectedVariant.size}.`
+        isSingleSizeProduct
+          ? `Alcanzaste el límite de stock disponible (${selectedVariant.stock} u.) para este artículo.`
+          : `Alcanzaste el límite de stock disponible (${selectedVariant.stock} u.) para el talle ${selectedVariant.size}.`
       );
       return;
     }
@@ -67,6 +94,7 @@ export default function ProductPurchaseSection({ product }) {
 
     setAddedFeedback({
       size: selectedVariant.size,
+      isSingleSize: isSingleSizeProduct,
       totalInCart: currentQtyInCart + 1,
     });
   };
@@ -74,7 +102,33 @@ export default function ProductPurchaseSection({ product }) {
   return (
     <div className="space-y-6 pt-2">
       {/* Size / Variant Selector */}
-      {hasVariants ? (
+      {!hasVariants ? (
+        <div className="p-3 bg-brand-dark/[0.03] border border-brand-dark/[0.08] rounded-xs text-xs text-brand-dark/60">
+          Este artículo no cuenta con variantes activas habilitadas para consulta.
+        </div>
+      ) : isSingleSizeProduct ? (
+        <div className="p-3.5 bg-white/75 border border-brand-dark/12 rounded-xs flex items-center justify-between gap-3 text-xs">
+          <div className="space-y-0.5">
+            <span className="block text-[10px] font-semibold uppercase tracking-wider text-brand-dark/45">
+              Presentación del artículo
+            </span>
+            <span className="font-semibold text-brand-dark uppercase tracking-wide">
+              Talle {variants[0].size} (Sin selección de talle requerida)
+            </span>
+          </div>
+          <span
+            className={`px-2.5 py-1 text-[11px] font-mono font-semibold uppercase tracking-wider rounded-xs ${
+              (variants[0].stock ?? 0) > 0
+                ? 'bg-brand-dark/[0.06] text-brand-dark'
+                : 'bg-red-50 text-red-800'
+            }`}
+          >
+            {(variants[0].stock ?? 0) > 0
+              ? `${variants[0].stock} disp.`
+              : 'Agotado'}
+          </span>
+        </div>
+      ) : (
         <div className="space-y-2.5">
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold uppercase tracking-wider text-brand-dark/50">
@@ -122,10 +176,6 @@ export default function ProductPurchaseSection({ product }) {
             })}
           </div>
         </div>
-      ) : (
-        <div className="p-3 bg-brand-dark/[0.03] border border-brand-dark/[0.08] rounded-xs text-xs text-brand-dark/60">
-          Este artículo no cuenta con variantes de talle habilitadas para consulta.
-        </div>
       )}
 
       {/* Validation Feedback */}
@@ -165,10 +215,13 @@ export default function ProductPurchaseSection({ product }) {
           >
             <div>
               <p className="font-semibold text-brand-dark">
-                Agregado a tu bolsa — Talle {addedFeedback.size}
+                {addedFeedback.isSingleSize
+                  ? `Agregado a tu bolsa (${addedFeedback.size})`
+                  : `Agregado a tu bolsa — Talle ${addedFeedback.size}`}
               </p>
               <p className="text-[11px] text-brand-dark/65">
-                Cantidad en bolsa para este talle: {addedFeedback.totalInCart}{' '}
+                Cantidad en bolsa:{' '}
+                {addedFeedback.totalInCart}{' '}
                 {addedFeedback.totalInCart === 1 ? 'unidad' : 'unidades'}
               </p>
             </div>

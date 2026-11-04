@@ -16,28 +16,45 @@ export type InquiryStatus = 'NEW' | 'IN_PROGRESS' | 'CONVERTED' | 'NOT_CONVERTED
 export interface BackendProductImage {
   id: number;
   imageUrl: string;
+  publicId?: string | null;
   isPrimary?: boolean;
   orderIndex?: number;
 }
 
 export interface BackendVariant {
-  id: number;
+  id?: number;
   size: string;
   stock?: number;
+  isActive?: boolean;
 }
 
 export interface BackendProduct {
   id: number;
   title: string;
-  description?: string;
+  description?: string | null;
   price: number;
-  baseStock?: number;
+  baseStock?: number | null;
   isActive?: boolean;
-  categoryId?: number;
-  categoryName?: string;
-  categorySlug?: string;
+  categoryId?: number | null;
+  categoryName?: string | null;
+  categorySlug?: string | null;
   images?: BackendProductImage[];
   variants?: BackendVariant[];
+}
+
+export interface AdminProductVariantPayload {
+  id?: number | null;
+  size: string;
+  stock: number;
+  isActive?: boolean;
+}
+
+export interface AdminProductRequestPayload {
+  title: string;
+  description?: string;
+  price: number;
+  categoryId: number;
+  variants?: AdminProductVariantPayload[];
 }
 
 export interface BackendCategory {
@@ -203,12 +220,14 @@ export function mapBackendProduct(raw: BackendProduct): Product {
     sortedImages = [primaryImage];
   }
 
-  // Extract sizes from variants
-  const variants = (raw.variants || []).map((v) => ({
-    id: v.id,
-    size: v.size,
-    stock: v.stock ?? 0,
-  }));
+  // Extract sizes from active variants
+  const variants = (raw.variants || [])
+    .filter((v) => v.isActive !== false && v.id != null)
+    .map((v) => ({
+      id: Number(v.id),
+      size: v.size,
+      stock: v.stock ?? 0,
+    }));
 
   const availableSizes = variants
     .filter((v) => v.stock > 0 || variants.every((x) => x.stock === 0))
@@ -223,8 +242,8 @@ export function mapBackendProduct(raw: BackendProduct): Product {
     formattedPrice: formatPrice(priceNum),
     description: raw.description || '',
     category: raw.categoryName || 'General',
-    categoryId: raw.categoryId,
-    categorySlug: raw.categorySlug,
+    categoryId: raw.categoryId ?? undefined,
+    categorySlug: raw.categorySlug ?? undefined,
     image: primaryImage,
     images: sortedImages,
     availableSizes,
@@ -281,8 +300,8 @@ export async function fetchProducts(options?: {
   const rawList: BackendProduct[] = Array.isArray(data)
     ? data
     : Array.isArray(data?.content)
-    ? data.content
-    : [];
+      ? data.content
+      : [];
 
   return rawList.map(mapBackendProduct);
 }
@@ -569,7 +588,9 @@ async function fetchAdminJson<T>(
   const headers = new Headers(options.headers || {});
   headers.set('Authorization', `Bearer ${token}`);
   headers.set('Accept', 'application/json');
-  if (options.body && !headers.has('Content-Type')) {
+  const isFormData =
+    typeof FormData !== 'undefined' && options.body instanceof FormData;
+  if (options.body && !headers.has('Content-Type') && !isFormData) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -731,3 +752,197 @@ export async function fetchAdminInquirySummaryCounts(): Promise<{
 
   return counts;
 }
+
+/**
+ * Fetches paginated products (active and inactive) for the admin panel: GET /api/admin/products
+ */
+export async function fetchAdminProducts(options?: {
+  page?: number;
+  size?: number;
+  sort?: string;
+  isActive?: boolean | null;
+  categoryId?: number | null;
+  title?: string;
+}): Promise<SpringPage<BackendProduct>> {
+  const baseUrl = getApiBaseUrl();
+  const url = new URL(`${baseUrl}/admin/products`);
+
+  url.searchParams.set('page', String(options?.page ?? 0));
+  url.searchParams.set('size', String(options?.size ?? 12));
+  url.searchParams.set('sort', options?.sort || 'id,desc');
+
+  if (typeof options?.isActive === 'boolean') {
+    url.searchParams.set('isActive', String(options.isActive));
+  }
+  if (options?.categoryId != null && Number(options.categoryId) > 0) {
+    url.searchParams.set('categoryId', String(options.categoryId));
+  }
+  if (options?.title && options.title.trim()) {
+    url.searchParams.set('title', options.title.trim());
+  }
+
+  return fetchAdminJson<SpringPage<BackendProduct>>(url.toString(), {
+    method: 'GET',
+  });
+}
+
+/**
+ * Fetches full admin product detail by ID (including inactive variants): GET /api/admin/products/{id}
+ */
+export async function fetchAdminProductById(
+  id: string | number
+): Promise<BackendProduct> {
+  return fetchAdminJson<BackendProduct>(`/admin/products/${id}`, {
+    method: 'GET',
+  });
+}
+
+/**
+ * Creates a new product via multipart/form-data: POST /api/admin/products
+ * Does not send baseStock.
+ */
+export async function createAdminProduct(
+  payload: AdminProductRequestPayload,
+  files?: File[]
+): Promise<BackendProduct> {
+  const productJsonBody: Record<string, unknown> = {
+    title: payload.title.trim(),
+    description: payload.description ? payload.description.trim() : '',
+    price: Number(payload.price),
+    categoryId: Number(payload.categoryId),
+  };
+
+  if (Array.isArray(payload.variants)) {
+    productJsonBody.variants = payload.variants.map((v) => ({
+      size: String(v.size || '').trim(),
+      stock: Math.max(0, Number(v.stock) || 0),
+      isActive: v.isActive !== false,
+    }));
+  }
+
+  const formData = new FormData();
+  formData.append('product', JSON.stringify(productJsonBody));
+
+  if (Array.isArray(files) && files.length > 0) {
+    for (const file of files) {
+      if (file) {
+        formData.append('files', file);
+      }
+    }
+  }
+
+  return fetchAdminJson<BackendProduct>('/admin/products', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+/**
+ * Updates an existing product via multipart/form-data: PUT /api/admin/products/{id}
+ * Omits variants when payload.variants is undefined so backend keeps existing variants untouched.
+ * When payload.variants is provided, sends all variants preserving IDs for existing ones.
+ */
+export async function updateAdminProduct(
+  id: string | number,
+  payload: AdminProductRequestPayload,
+  files?: File[]
+): Promise<BackendProduct> {
+  const productJsonBody: Record<string, unknown> = {
+    title: payload.title.trim(),
+    description: payload.description ? payload.description.trim() : '',
+    price: Number(payload.price),
+    categoryId: Number(payload.categoryId),
+  };
+
+  if (Array.isArray(payload.variants)) {
+    productJsonBody.variants = payload.variants.map((v) => {
+      const item: Record<string, unknown> = {
+        size: String(v.size || '').trim(),
+        stock: Math.max(0, Number(v.stock) || 0),
+        isActive: v.isActive !== false,
+      };
+      if (v.id != null) {
+        item.id = Number(v.id);
+      }
+      return item;
+    });
+  }
+
+  const formData = new FormData();
+  formData.append('product', JSON.stringify(productJsonBody));
+
+  if (Array.isArray(files) && files.length > 0) {
+    for (const file of files) {
+      if (file) {
+        formData.append('files', file);
+      }
+    }
+  }
+
+  return fetchAdminJson<BackendProduct>(`/admin/products/${id}`, {
+    method: 'PUT',
+    body: formData,
+  });
+}
+
+/**
+ * Activates or deactivates a product: PATCH /api/admin/products/{id}/status
+ */
+export async function updateAdminProductStatus(
+  id: string | number,
+  isActive: boolean
+): Promise<BackendProduct> {
+  return fetchAdminJson<BackendProduct>(`/admin/products/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isActive: Boolean(isActive) }),
+  });
+}
+
+/**
+ * Deletes an individual product image by internal ID: DELETE /api/admin/products/{productId}/images/{imageId}
+ */
+export async function deleteAdminProductImage(
+  productId: string | number,
+  imageId: string | number
+): Promise<BackendProduct> {
+  return fetchAdminJson<BackendProduct>(
+    `/admin/products/${productId}/images/${imageId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
+/**
+ * Sets a specific image as the product's primary cover: PATCH /api/admin/products/{productId}/images/{imageId}/primary
+ */
+export async function setAdminProductPrimaryImage(
+  productId: string | number,
+  imageId: string | number
+): Promise<BackendProduct> {
+  return fetchAdminJson<BackendProduct>(
+    `/admin/products/${productId}/images/${imageId}/primary`,
+    {
+      method: 'PATCH',
+    }
+  );
+}
+
+/**
+ * Reorders a product's gallery images by internal IDs: PATCH /api/admin/products/{productId}/images/order
+ */
+export async function reorderAdminProductImages(
+  productId: string | number,
+  imageIds: number[]
+): Promise<BackendProduct> {
+  return fetchAdminJson<BackendProduct>(
+    `/admin/products/${productId}/images/order`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        imageIds: imageIds.map((id) => Number(id)),
+      }),
+    }
+  );
+}
+

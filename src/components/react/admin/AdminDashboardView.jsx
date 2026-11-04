@@ -101,7 +101,7 @@ export default function AdminDashboardView() {
               Dashboard de Consultas
             </h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
             <button
               type="button"
               onClick={loadDashboard}
@@ -110,6 +110,12 @@ export default function AdminDashboardView() {
             >
               Actualizar
             </button>
+            <a
+              href="/admin/products"
+              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/20 hover:border-brand-dark rounded-xs transition-colors"
+            >
+              Gestionar productos
+            </a>
             <a
               href="/admin/inquiries"
               className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] bg-brand-dark hover:opacity-90 rounded-xs transition-opacity"
