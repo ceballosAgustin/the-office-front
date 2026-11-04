@@ -237,6 +237,12 @@ export default function AdminProductsListView() {
               Actualizar
             </button>
             <a
+              href="/admin/categories"
+              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/20 hover:border-brand-dark rounded-xs transition-colors"
+            >
+              Categorías
+            </a>
+            <a
               href="/admin/products/new"
               className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] bg-brand-dark hover:opacity-90 rounded-xs transition-opacity"
             >

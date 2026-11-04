@@ -114,7 +114,13 @@ export default function AdminDashboardView() {
               href="/admin/products"
               className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/20 hover:border-brand-dark rounded-xs transition-colors"
             >
-              Gestionar productos
+              Products
+            </a>
+            <a
+              href="/admin/categories"
+              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/20 hover:border-brand-dark rounded-xs transition-colors"
+            >
+              Categories
             </a>
             <a
               href="/admin/inquiries"

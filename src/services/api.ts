@@ -61,7 +61,11 @@ export interface BackendCategory {
   id: number;
   name: string;
   slug: string;
-  description?: string;
+}
+
+export interface AdminCategoryRequestPayload {
+  name: string;
+  slug?: string;
 }
 
 export interface SpringPage<T> {
@@ -353,6 +357,7 @@ export async function fetchCategories(): Promise<BackendCategory[]> {
   try {
     const res = await fetch(url, {
       method: 'GET',
+      cache: 'no-store',
       headers: {
         Accept: 'application/json',
       },
@@ -945,4 +950,110 @@ export async function reorderAdminProductImages(
     }
   );
 }
+
+/**
+ * Generates a slug preview matching the backend CategoryService.normalizeSlug rules:
+ * strips accents/diacritics, lowercases, replaces non-alphanumeric sequences with '-', and trims leading/trailing '-'.
+ */
+export function suggestCategorySlug(input?: string | null): string {
+  if (!input || typeof input !== 'string') return '';
+  return input
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 100);
+}
+
+/**
+ * Fetches all categories for the admin panel from GET /api/categories (throwing ApiError on network/server failure).
+ */
+export async function fetchAdminCategories(): Promise<BackendCategory[]> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/categories`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+  } catch {
+    throw new ApiError(
+      `No se pudo conectar con el servidor (${baseUrl}). Verificá tu conexión.`,
+      0
+    );
+  }
+
+  if (!res.ok) {
+    const { message } = await parseBackendErrorResponse(
+      res,
+      `Error al obtener las categorías (${res.status}).`
+    );
+    throw new ApiError(message, res.status);
+  }
+
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+/**
+ * Creates a new category via POST /api/admin/categories (ROLE_ADMIN).
+ */
+export async function createAdminCategory(
+  payload: AdminCategoryRequestPayload
+): Promise<BackendCategory> {
+  const body: Record<string, string> = {
+    name: (payload.name || '').trim(),
+  };
+
+  if (payload.slug !== undefined && payload.slug.trim().length > 0) {
+    body.slug = payload.slug.trim();
+  }
+
+  return fetchAdminJson<BackendCategory>('/admin/categories', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Updates an existing category via PUT /api/admin/categories/{id} (ROLE_ADMIN).
+ * Always sends the slug so the backend preserves it unless modified by the admin.
+ */
+export async function updateAdminCategory(
+  id: string | number,
+  payload: AdminCategoryRequestPayload
+): Promise<BackendCategory> {
+  const body: Record<string, string> = {
+    name: (payload.name || '').trim(),
+  };
+
+  if (payload.slug !== undefined && payload.slug.trim().length > 0) {
+    body.slug = payload.slug.trim();
+  }
+
+  return fetchAdminJson<BackendCategory>(`/admin/categories/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Deletes a category via DELETE /api/admin/categories/{id} (ROLE_ADMIN).
+ * Throws ApiError with status 409 if the category has associated products (active or inactive).
+ */
+export async function deleteAdminCategory(
+  id: string | number
+): Promise<{ message: string }> {
+  return fetchAdminJson<{ message: string }>(`/admin/categories/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 

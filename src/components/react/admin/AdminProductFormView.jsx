@@ -987,7 +987,7 @@ export default function AdminProductFormView({
           {/* Empty Categories Warning Banner */}
           {categoriesLoaded && categories.length === 0 && (
             <div
-              className="p-4 bg-amber-50 border border-amber-300 rounded-xs text-xs sm:text-sm text-amber-950 space-y-1"
+              className="p-4 bg-amber-50 border border-amber-300 rounded-xs text-xs sm:text-sm text-amber-950 space-y-2"
               role="alert"
             >
               <p className="font-bold">
@@ -995,10 +995,18 @@ export default function AdminProductFormView({
               </p>
               <p>
                 El contrato del backend exige asociar cada producto a un{' '}
-                <code className="font-mono">categoryId</code> válido. Es
-                necesario completar la configuración de categorías desde el
-                backend antes de poder crear o guardar productos.
+                <code className="font-mono">categoryId</code> válido. Creá al
+                menos una categoría antes de poder guardar productos.
               </p>
+              <div className="pt-1">
+                <a
+                  href="/admin/categories"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider bg-amber-900 text-white rounded-xs hover:opacity-90 transition-opacity"
+                >
+                  <span>Ir a Categories Management</span>
+                  <span aria-hidden="true">→</span>
+                </a>
+              </div>
             </div>
           )}
 
