@@ -3,6 +3,16 @@
  * Centralizes all HTTP communication with Spring Boot backend (/api)
  */
 
+import {
+  type AdminSession,
+  getAdminToken,
+  saveAdminSession,
+  clearAdminSession,
+  isAdminRole,
+} from './adminAuth';
+
+export type InquiryStatus = 'NEW' | 'IN_PROGRESS' | 'CONVERTED' | 'NOT_CONVERTED';
+
 export interface BackendProductImage {
   id: number;
   imageUrl: string;
@@ -64,15 +74,87 @@ export interface Product {
   badge?: string;
 }
 
+export interface InquiryItemPayload {
+  variantId: number;
+  quantity: number;
+}
+
+export interface InquiryRequestPayload {
+  contactName?: string;
+  items: InquiryItemPayload[];
+}
+
+export interface InquiryItemResponse {
+  id?: number;
+  variantId: number;
+  productTitle: string;
+  size: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  imageUrl?: string | null;
+}
+
+export interface InquiryResponse {
+  id: number;
+  inquiryNumber: string;
+  status: InquiryStatus;
+  contactName?: string | null;
+  createdAt: string;
+  totalAmount: number;
+  whatsappUrl?: string | null;
+  orderId?: number | null;
+  orderNumber?: string | null;
+  items: InquiryItemResponse[];
+}
+
+export interface OrderItemResponse {
+  id?: number;
+  variantId?: number;
+  productTitle?: string;
+  size?: string;
+  quantity: number;
+  priceAtPurchase?: number;
+  subtotal?: number;
+}
+
+export interface OrderResponse {
+  id: number;
+  orderNumber: string;
+  status: string;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  totalAmount: number;
+  createdAt: string;
+  whatsappUrl?: string | null;
+  items?: OrderItemResponse[];
+}
+
+export interface InquiryConfirmationResponse {
+  inquiryId: number;
+  inquiryNumber: string;
+  status: InquiryStatus;
+  orderId: number;
+  orderNumber: string;
+  order?: OrderResponse | null;
+}
+
+export interface ConfirmInquiryPayload {
+  contactName?: string;
+  contactPhone?: string;
+}
+
 export class ApiError extends Error {
   status: number;
   isNotFound: boolean;
+  fieldErrors?: Record<string, string>;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, fieldErrors?: Record<string, string>) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.isNotFound = status === 404;
+    this.fieldErrors = fieldErrors;
   }
 }
 
@@ -121,7 +203,7 @@ export function mapBackendProduct(raw: BackendProduct): Product {
     sortedImages = [primaryImage];
   }
 
-  // Extract sizes from variants with available stock
+  // Extract sizes from variants
   const variants = (raw.variants || []).map((v) => ({
     id: v.id,
     size: v.size,
@@ -145,7 +227,7 @@ export function mapBackendProduct(raw: BackendProduct): Product {
     categorySlug: raw.categorySlug,
     image: primaryImage,
     images: sortedImages,
-    availableSizes: availableSizes.length > 0 ? availableSizes : ['Único'],
+    availableSizes,
     variants,
   };
 }
@@ -279,4 +361,373 @@ export async function getAllProductPaths(): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * Registers a commercial inquiry via POST /api/inquiries.
+ * Does not create an order or deduct stock. Returns the saved inquiry and WhatsApp URL.
+ */
+export async function createInquiry(payload: InquiryRequestPayload): Promise<InquiryResponse> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/inquiries`;
+
+  const body: Record<string, unknown> = {
+    items: (payload.items || []).map((item) => ({
+      variantId: Number(item.variantId),
+      quantity: Number(item.quantity),
+    })),
+  };
+
+  if (payload.contactName && payload.contactName.trim().length > 0) {
+    body.contactName = payload.contactName.trim();
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(
+      `No se pudo establecer conexión con el servidor (${baseUrl}). Verificá tu conexión e intentá nuevamente.`,
+      0
+    );
+  }
+
+  if (!res.ok) {
+    let errorMessage = `No se pudo registrar la consulta (${res.status}).`;
+    let fieldErrors: Record<string, string> | undefined;
+
+    try {
+      const errData = await res.json();
+      if (errData && typeof errData === 'object') {
+        if (errData.fieldErrors && typeof errData.fieldErrors === 'object') {
+          fieldErrors = errData.fieldErrors;
+          const details = Object.values(errData.fieldErrors).filter(Boolean).join(' • ');
+          if (details) {
+            errorMessage = details;
+          } else if (typeof errData.message === 'string' && errData.message.trim()) {
+            errorMessage = errData.message.trim();
+          }
+        } else if (typeof errData.message === 'string' && errData.message.trim()) {
+          errorMessage = errData.message.trim();
+        } else if (typeof errData.error === 'string' && errData.error.trim()) {
+          errorMessage = errData.error.trim();
+        }
+      }
+    } catch {
+      // Non-JSON error response
+    }
+
+    throw new ApiError(errorMessage, res.status, fieldErrors);
+  }
+
+  const data: InquiryResponse = await res.json();
+  return data;
+}
+
+export function formatDateTime(isoString?: string | null): string {
+  if (!isoString) return '—';
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return isoString;
+  return new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+async function parseBackendErrorResponse(
+  res: Response,
+  fallbackMessage: string
+): Promise<{ message: string; fieldErrors?: Record<string, string> }> {
+  let message = fallbackMessage;
+  let fieldErrors: Record<string, string> | undefined;
+
+  try {
+    const errData = await res.json();
+    if (errData && typeof errData === 'object') {
+      if (errData.fieldErrors && typeof errData.fieldErrors === 'object') {
+        fieldErrors = errData.fieldErrors;
+        const details = Object.values(errData.fieldErrors)
+          .filter(Boolean)
+          .join(' • ');
+        if (details) {
+          message = details;
+        } else if (typeof errData.message === 'string' && errData.message.trim()) {
+          message = errData.message.trim();
+        }
+      } else if (typeof errData.message === 'string' && errData.message.trim()) {
+        message = errData.message.trim();
+      } else if (typeof errData.error === 'string' && errData.error.trim()) {
+        message = errData.error.trim();
+      }
+    }
+  } catch {
+    // Non-JSON response
+  }
+
+  return { message, fieldErrors };
+}
+
+/**
+ * Authenticates an admin user via POST /api/auth/login.
+ * Rejects users who do not have the ADMIN role.
+ */
+export async function adminLogin(
+  username: string,
+  password: string
+): Promise<AdminSession> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/auth/login`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        username: username.trim(),
+        password,
+      }),
+    });
+  } catch {
+    throw new ApiError(
+      `No se pudo conectar con el servidor (${baseUrl}). Verificá que el backend esté en ejecución.`,
+      0
+    );
+  }
+
+  if (res.status === 401) {
+    throw new ApiError(
+      'Credenciales inválidas. Verificá tu usuario y contraseña.',
+      401
+    );
+  }
+
+  if (!res.ok) {
+    const { message, fieldErrors } = await parseBackendErrorResponse(
+      res,
+      `Error al iniciar sesión (${res.status}).`
+    );
+    throw new ApiError(message, res.status, fieldErrors);
+  }
+
+  const data = await res.json();
+  if (!data || typeof data.token !== 'string' || !data.token.trim()) {
+    throw new ApiError('Respuesta de autenticación inválida.', 500);
+  }
+
+  if (!isAdminRole(data.role)) {
+    clearAdminSession();
+    throw new ApiError(
+      'Acceso denegado: esta cuenta posee rol USER y no tiene permisos para acceder al panel administrativo.',
+      403
+    );
+  }
+
+  const session: AdminSession = {
+    token: data.token,
+    type: data.type || 'Bearer',
+    username: data.username || username.trim(),
+    role: 'ADMIN',
+  };
+
+  saveAdminSession(session);
+  return session;
+}
+
+/**
+ * Centralized authenticated HTTP helper for /api/admin/** endpoints.
+ */
+async function fetchAdminJson<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const token = getAdminToken();
+  if (!token) {
+    clearAdminSession();
+    throw new ApiError(
+      'Tu sesión administrativa no está activa. Iniciá sesión para continuar.',
+      401
+    );
+  }
+
+  const baseUrl = getApiBaseUrl();
+  const url = path.startsWith('http') ? path : `${baseUrl}${path}`;
+
+  const headers = new Headers(options.headers || {});
+  headers.set('Authorization', `Bearer ${token}`);
+  headers.set('Accept', 'application/json');
+  if (options.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new ApiError(
+      `Error de red al conectar con el servidor (${baseUrl}). Verificá tu conexión.`,
+      0
+    );
+  }
+
+  if (res.status === 401) {
+    clearAdminSession();
+    throw new ApiError(
+      'Tu sesión administrativa expiró o no es válida. Por favor iniciá sesión nuevamente.',
+      401
+    );
+  }
+
+  if (res.status === 403) {
+    clearAdminSession();
+    throw new ApiError(
+      'Acceso denegado (403): tu cuenta no posee permisos de administrador para realizar esta operación.',
+      403
+    );
+  }
+
+  if (res.status === 404) {
+    const { message } = await parseBackendErrorResponse(
+      res,
+      'La consulta o recurso solicitado no fue encontrado.'
+    );
+    throw new ApiError(message, 404);
+  }
+
+  if (res.status >= 500) {
+    const { message } = await parseBackendErrorResponse(
+      res,
+      'Ocurrió un error interno en el servidor. Intentá nuevamente en unos instantes.'
+    );
+    throw new ApiError(message, res.status);
+  }
+
+  if (!res.ok) {
+    const { message, fieldErrors } = await parseBackendErrorResponse(
+      res,
+      `No se pudo completar la operación (${res.status}).`
+    );
+    throw new ApiError(message, res.status, fieldErrors);
+  }
+
+  return (await res.json()) as T;
+}
+
+/**
+ * Fetches paginated inquiries for the admin panel: GET /api/admin/inquiries
+ */
+export async function fetchAdminInquiries(options?: {
+  status?: InquiryStatus | '';
+  page?: number;
+  size?: number;
+  sort?: string;
+}): Promise<SpringPage<InquiryResponse>> {
+  const baseUrl = getApiBaseUrl();
+  const url = new URL(`${baseUrl}/admin/inquiries`);
+
+  if (options?.status) {
+    url.searchParams.set('status', options.status);
+  }
+  url.searchParams.set('page', String(options?.page ?? 0));
+  url.searchParams.set('size', String(options?.size ?? 15));
+  url.searchParams.set('sort', options?.sort || 'createdAt,desc');
+
+  return fetchAdminJson<SpringPage<InquiryResponse>>(url.toString(), {
+    method: 'GET',
+  });
+}
+
+/**
+ * Fetches a single inquiry detail by ID: GET /api/admin/inquiries/{id}
+ */
+export async function fetchAdminInquiryById(
+  id: string | number
+): Promise<InquiryResponse> {
+  return fetchAdminJson<InquiryResponse>(`/admin/inquiries/${id}`, {
+    method: 'GET',
+  });
+}
+
+/**
+ * Updates an inquiry status to IN_PROGRESS or NOT_CONVERTED: PATCH /api/admin/inquiries/{id}/status
+ */
+export async function updateAdminInquiryStatus(
+  id: string | number,
+  status: 'IN_PROGRESS' | 'NOT_CONVERTED'
+): Promise<InquiryResponse> {
+  return fetchAdminJson<InquiryResponse>(`/admin/inquiries/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+/**
+ * Confirms a sale from an inquiry: POST /api/admin/inquiries/{id}/confirm
+ */
+export async function confirmAdminInquiry(
+  id: string | number,
+  payload?: ConfirmInquiryPayload
+): Promise<InquiryConfirmationResponse> {
+  const body: Record<string, string> = {};
+  if (payload?.contactName && payload.contactName.trim()) {
+    body.contactName = payload.contactName.trim();
+  }
+  if (payload?.contactPhone && payload.contactPhone.trim()) {
+    body.contactPhone = payload.contactPhone.trim();
+  }
+
+  return fetchAdminJson<InquiryConfirmationResponse>(
+    `/admin/inquiries/${id}/confirm`,
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }
+  );
+}
+
+/**
+ * Fetches accurate inquiry counts per status from the backend using lightweight size=1 queries.
+ */
+export async function fetchAdminInquirySummaryCounts(): Promise<{
+  NEW: number;
+  IN_PROGRESS: number;
+  CONVERTED: number;
+  NOT_CONVERTED: number;
+  total: number;
+}> {
+  const [newPage, inProgressPage, convertedPage, notConvertedPage] =
+    await Promise.all([
+      fetchAdminInquiries({ status: 'NEW', page: 0, size: 1 }),
+      fetchAdminInquiries({ status: 'IN_PROGRESS', page: 0, size: 1 }),
+      fetchAdminInquiries({ status: 'CONVERTED', page: 0, size: 1 }),
+      fetchAdminInquiries({ status: 'NOT_CONVERTED', page: 0, size: 1 }),
+    ]);
+
+  const counts = {
+    NEW: Number(newPage?.totalElements) || 0,
+    IN_PROGRESS: Number(inProgressPage?.totalElements) || 0,
+    CONVERTED: Number(convertedPage?.totalElements) || 0,
+    NOT_CONVERTED: Number(notConvertedPage?.totalElements) || 0,
+    total: 0,
+  };
+  counts.total =
+    counts.NEW + counts.IN_PROGRESS + counts.CONVERTED + counts.NOT_CONVERTED;
+
+  return counts;
 }

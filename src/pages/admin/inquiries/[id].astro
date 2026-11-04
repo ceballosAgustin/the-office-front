@@ -1,0 +1,18 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import AdminInquiryDetailView from '../../../components/react/admin/AdminInquiryDetailView.jsx';
+
+export async function getStaticPaths() {
+  // Pre-render IDs 1-100 so static build supports inquiry detail routes
+  return Array.from({ length: 100 }, (_, i) => ({
+    params: { id: String(i + 1) },
+  }));
+}
+
+const { id } = Astro.params;
+---
+
+<AdminLayout title={`Consulta #${id} — Admin The Office BA`}>
+  <AdminInquiryDetailView client:load inquiryId={id} />
+</AdminLayout>
+

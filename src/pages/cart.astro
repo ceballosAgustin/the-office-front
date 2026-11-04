@@ -1,0 +1,12 @@
+---
+import Layout from '../layouts/Layout.astro';
+import CartView from '../components/react/CartView.jsx';
+---
+
+<Layout
+  title="Shopping Bag — The Office BA"
+  description="Revisá tu selección de prendas y registrá tu consulta comercial por WhatsApp."
+>
+  <CartView client:load />
+</Layout>
+

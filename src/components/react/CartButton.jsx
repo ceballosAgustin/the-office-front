@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useCart } from '../../store/cartStore';
 
 export default function CartButton() {
-  const [count] = useState(2);
+  const { totalCount, isHydrated } = useCart();
 
   return (
-    <button
-      type="button"
+    <a
+      href="/cart"
       className="relative flex items-center justify-center w-11 h-11 rounded-sm text-brand-dark transition-opacity duration-150 hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 active:scale-95 cursor-pointer"
-      aria-label={`Bolsa de compras, ${count} artículos`}
+      aria-label={`Bolsa de compras, ${isHydrated ? totalCount : 0} ${
+        totalCount === 1 ? 'artículo' : 'artículos'
+      }`}
     >
       {/* Editorial Shopping Bag Icon */}
       <svg
@@ -28,15 +30,15 @@ export default function CartButton() {
         <path d="M16 10a4 4 0 0 1-8 0" />
       </svg>
 
-      {/* Compact Minimal Badge */}
-      {count > 0 && (
+      {/* Compact Minimal Badge — Rendered only when cart has items */}
+      {isHydrated && totalCount > 0 && (
         <span
           className="absolute top-1.5 right-1.5 flex items-center justify-center min-w-[15px] h-[15px] px-1 rounded-full bg-brand-dark text-[#FAFAFA] text-[9px] font-semibold leading-none tabular-nums pointer-events-none"
           aria-hidden="true"
         >
-          {count}
+          {totalCount}
         </span>
       )}
-    </button>
+    </a>
   );
 }

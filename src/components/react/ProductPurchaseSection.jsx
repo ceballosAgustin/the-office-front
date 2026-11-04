@@ -1,89 +1,93 @@
 import { useState } from 'react';
+import { useCart } from '../../store/cartStore';
 
-export default function ProductPurchaseSection({ availableSizes, colors }) {
-  const [selectedSize, setSelectedSize] = useState(null);
-  const [selectedColor, setSelectedColor] = useState(
-    colors && colors.length > 0 ? colors[0].name : null
-  );
+export default function ProductPurchaseSection({ product }) {
+  const { items, addItem } = useCart();
+  const [selectedVariantId, setSelectedVariantId] = useState(null);
   const [validationError, setValidationError] = useState(null);
-  const [provisionalNotice, setProvisionalNotice] = useState(null);
+  const [addedFeedback, setAddedFeedback] = useState(null);
 
-  const hasSizes = availableSizes && availableSizes.length > 0;
-  const hasColors = colors && colors.length > 0;
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const hasVariants = variants.length > 0;
+  const hasAvailableStock = variants.some((v) => (v.stock ?? 0) > 0);
 
-  const handleSizeClick = (size) => {
-    setSelectedSize(size);
+  const selectedVariant =
+    variants.find((v) => v.id === selectedVariantId) || null;
+
+  const handleVariantSelect = (variant) => {
+    if ((variant.stock ?? 0) <= 0) return;
+    setSelectedVariantId(variant.id);
     setValidationError(null);
-    setProvisionalNotice(null);
-  };
-
-  const handleColorClick = (colorName) => {
-    setSelectedColor(colorName);
-    setProvisionalNotice(null);
+    setAddedFeedback(null);
   };
 
   const handleAddToCart = () => {
-    if (hasSizes && !selectedSize) {
+    if (!hasVariants || !hasAvailableStock) {
+      setValidationError(
+        'Este producto no posee variantes con stock disponible en este momento.'
+      );
+      return;
+    }
+
+    if (!selectedVariant) {
       setValidationError('Por favor seleccioná un talle antes de continuar.');
-      setProvisionalNotice(null);
+      setAddedFeedback(null);
+      return;
+    }
+
+    const existingInCart = items.find(
+      (i) => i.variantId === selectedVariant.id
+    );
+    const currentQtyInCart = existingInCart ? existingInCart.quantity : 0;
+
+    if (
+      selectedVariant.stock !== undefined &&
+      currentQtyInCart + 1 > selectedVariant.stock
+    ) {
+      setValidationError(
+        `Alcanzaste el límite de stock disponible (${selectedVariant.stock} u.) para el talle ${selectedVariant.size}.`
+      );
       return;
     }
 
     setValidationError(null);
-    // Explicitly document provisional state without simulating false purchase or modifying cart count
-    const sizeInfo = selectedSize ? `Talle ${selectedSize}` : '';
-    const colorInfo = selectedColor ? `Color ${selectedColor}` : '';
-    const variantInfo = [sizeInfo, colorInfo].filter(Boolean).join(' • ');
 
-    setProvisionalNotice(
-      `Opción seleccionada: ${variantInfo || 'Estándar'}. Botón preparado para la integración del carrito en la próxima etapa.`
+    addItem(
+      {
+        productId: product?.id ? Number(product.id) : undefined,
+        variantId: selectedVariant.id,
+        title: product?.title || 'Producto',
+        size: selectedVariant.size,
+        unitPrice: Number(product?.price) || 0,
+        image: product?.image || '',
+        maxStock: selectedVariant.stock,
+      },
+      1
     );
+
+    setAddedFeedback({
+      size: selectedVariant.size,
+      totalInCart: currentQtyInCart + 1,
+    });
   };
 
   return (
     <div className="space-y-6 pt-2">
-      {/* Color Selector (Rendered only when product has color variants) */}
-      {hasColors && (
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold uppercase tracking-wider text-brand-dark/50">
-              Color
-            </span>
-            <span className="font-medium text-brand-dark">
-              {selectedColor}
-            </span>
-          </div>
-          <div className="flex items-center gap-2.5" role="group" aria-label="Selección de color">
-            {colors.map((color) => {
-              const isSelected = selectedColor === color.name;
-              return (
-                <button
-                  key={color.name}
-                  type="button"
-                  onClick={() => handleColorClick(color.name)}
-                  aria-pressed={isSelected}
-                  aria-label={`Color ${color.name}`}
-                  className={`w-8 h-8 rounded-full transition-transform duration-150 flex items-center justify-center cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark ${
-                    isSelected ? 'ring-2 ring-brand-dark ring-offset-2 scale-105' : 'hover:scale-105 opacity-80 hover:opacity-100 ring-1 ring-black/10'
-                  }`}
-                  style={{ backgroundColor: color.hex }}
-                />
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Size Selector (Rendered only when product has available sizes) */}
-      {hasSizes && (
+      {/* Size / Variant Selector */}
+      {hasVariants ? (
         <div className="space-y-2.5">
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold uppercase tracking-wider text-brand-dark/50">
               Seleccioná tu talle
             </span>
-            {selectedSize && (
+            {selectedVariant && (
               <span className="font-medium text-brand-dark">
-                Seleccionado: {selectedSize}
+                Talle {selectedVariant.size}
+                {selectedVariant.stock !== undefined && (
+                  <span className="text-brand-dark/45 ml-1.5 font-normal">
+                    ({selectedVariant.stock} disp.)
+                  </span>
+                )}
               </span>
             )}
           </div>
@@ -92,32 +96,44 @@ export default function ProductPurchaseSection({ availableSizes, colors }) {
             role="radiogroup"
             aria-label="Selección de talle"
           >
-            {availableSizes.map((size) => {
-              const isSelected = selectedSize === size;
+            {variants.map((variant) => {
+              const isSelected = selectedVariantId === variant.id;
+              const isOutOfStock = (variant.stock ?? 0) <= 0;
+
               return (
                 <button
-                  key={size}
+                  key={variant.id}
                   type="button"
                   role="radio"
                   aria-checked={isSelected}
-                  onClick={() => handleSizeClick(size)}
-                  className={`min-h-[44px] flex items-center justify-center text-xs font-semibold uppercase tracking-wider rounded-xs border transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark ${
-                    isSelected
-                      ? 'bg-brand-dark text-[#FAFAFA] border-brand-dark shadow-xs'
-                      : 'bg-white/80 text-brand-dark border-brand-dark/15 hover:border-brand-dark hover:bg-white'
+                  disabled={isOutOfStock}
+                  onClick={() => handleVariantSelect(variant)}
+                  className={`min-h-[44px] flex items-center justify-center text-xs font-semibold uppercase tracking-wider rounded-xs border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark ${
+                    isOutOfStock
+                      ? 'bg-brand-dark/[0.03] text-brand-dark/30 border-brand-dark/10 line-through cursor-not-allowed'
+                      : isSelected
+                      ? 'bg-brand-dark text-[#FAFAFA] border-brand-dark shadow-xs cursor-pointer'
+                      : 'bg-white/80 text-brand-dark border-brand-dark/15 hover:border-brand-dark hover:bg-white cursor-pointer'
                   }`}
                 >
-                  {size}
+                  {variant.size}
                 </button>
               );
             })}
           </div>
         </div>
+      ) : (
+        <div className="p-3 bg-brand-dark/[0.03] border border-brand-dark/[0.08] rounded-xs text-xs text-brand-dark/60">
+          Este artículo no cuenta con variantes de talle habilitadas para consulta.
+        </div>
       )}
 
       {/* Validation Feedback */}
       {validationError && (
-        <p className="text-xs font-medium text-red-600 tracking-tight" role="alert">
+        <p
+          className="text-xs font-medium text-red-600 tracking-tight"
+          role="alert"
+        >
           {validationError}
         </p>
       )}
@@ -127,23 +143,41 @@ export default function ProductPurchaseSection({ availableSizes, colors }) {
         <button
           type="button"
           onClick={handleAddToCart}
-          className="w-full min-h-[48px] md:min-h-[52px] px-6 flex items-center justify-center gap-2 rounded-xs bg-brand-dark text-[#FAFAFA] text-sm font-semibold tracking-wide uppercase transition-all duration-150 hover:opacity-90 active:scale-[0.99] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark focus-visible:ring-offset-2"
+          disabled={!hasVariants || !hasAvailableStock}
+          className={`w-full min-h-[48px] md:min-h-[52px] px-6 flex items-center justify-center gap-2 rounded-xs text-sm font-semibold tracking-wide uppercase transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark focus-visible:ring-offset-2 ${
+            !hasVariants || !hasAvailableStock
+              ? 'bg-brand-dark/20 text-brand-dark/50 cursor-not-allowed'
+              : 'bg-brand-dark text-[#FAFAFA] hover:opacity-90 active:scale-[0.99] cursor-pointer'
+          }`}
           aria-label="Agregar al carrito"
         >
-          Agregar al carrito
+          {!hasVariants || !hasAvailableStock
+            ? 'Sin stock disponible'
+            : 'Agregar al carrito'}
         </button>
 
-        {/* Provisional Note / Integration Hook Message */}
-        {provisionalNotice && (
+        {/* Added to Cart Confirmation Notice */}
+        {addedFeedback && (
           <div
-            className="p-3 bg-brand-dark/[0.04] border border-brand-dark/[0.08] rounded-xs text-[11px] leading-relaxed text-brand-dark/70 animate-fadeIn"
+            className="p-3.5 bg-brand-dark/[0.04] border border-brand-dark/[0.12] rounded-xs text-xs leading-relaxed text-brand-dark flex items-center justify-between gap-3 animate-fadeIn"
             role="status"
             aria-live="polite"
           >
-            <p className="font-semibold text-brand-dark/90">
-              Estado de compra (provisional):
-            </p>
-            <p>{provisionalNotice}</p>
+            <div>
+              <p className="font-semibold text-brand-dark">
+                Agregado a tu bolsa — Talle {addedFeedback.size}
+              </p>
+              <p className="text-[11px] text-brand-dark/65">
+                Cantidad en bolsa para este talle: {addedFeedback.totalInCart}{' '}
+                {addedFeedback.totalInCart === 1 ? 'unidad' : 'unidades'}
+              </p>
+            </div>
+            <a
+              href="/cart"
+              className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-brand-dark underline underline-offset-4 hover:opacity-70 transition-opacity"
+            >
+              Ver carrito →
+            </a>
           </div>
         )}
       </div>

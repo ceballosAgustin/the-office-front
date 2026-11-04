@@ -208,10 +208,7 @@ export default function ProductDetailView({ productId }) {
           )}
 
           {/* Interactive Purchase Section (Sizes, Variants, Add to Cart) */}
-          <ProductPurchaseSection
-            availableSizes={product.availableSizes}
-            colors={[]}
-          />
+          <ProductPurchaseSection product={product} />
 
           {/* Shipping & Support Micro-info */}
           <div className="border-t border-brand-dark/[0.08] pt-4 grid grid-cols-2 gap-3 text-[11px] text-brand-dark/50">
