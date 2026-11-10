@@ -1,41 +1,150 @@
-import { useState, useEffect } from 'react';
-import { fetchProducts, fetchCategories, getApiBaseUrl } from '../../services/api';
+import { useState, useEffect, useRef } from 'react';
+import { fetchProducts, fetchCategories } from '../../services/api';
+
+function parseCatalogParams() {
+  if (typeof window === 'undefined') {
+    return { categoryId: null, search: '' };
+  }
+  const params = new URLSearchParams(window.location.search);
+  const rawCat = params.get('categoryId');
+  const categoryId =
+    rawCat !== null && rawCat.trim() !== '' && Number.isFinite(Number(rawCat))
+      ? Number(rawCat)
+      : null;
+  const search = params.get('search')?.trim() || '';
+  return { categoryId, search };
+}
 
 export default function CatalogSection() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState(
+    () => parseCatalogParams().categoryId
+  );
+  const [searchQuery, setSearchQuery] = useState(
+    () => parseCatalogParams().search
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
+  const requestIdRef = useRef(0);
 
-  const loadData = async (catId = selectedCategoryId) => {
+  const loadData = async (
+    catId = selectedCategoryId,
+    currentSearch = searchQuery
+  ) => {
+    requestIdRef.current += 1;
+    const reqId = requestIdRef.current;
+
     setIsLoading(true);
     setErrorMessage(null);
     try {
       const [fetchedProducts, fetchedCategories] = await Promise.all([
-        fetchProducts({ categoryId: catId }),
+        fetchProducts({
+          categoryId: catId,
+          search: currentSearch ? currentSearch.trim() : undefined,
+        }),
         fetchCategories(),
       ]);
+
+      if (reqId !== requestIdRef.current) return;
+
       setProducts(fetchedProducts);
       if (fetchedCategories && fetchedCategories.length > 0) {
         setCategories(fetchedCategories);
       }
     } catch (err) {
+      if (reqId !== requestIdRef.current) return;
       setErrorMessage(
         err.message || 'No se pudo conectar con el catálogo de productos.'
       );
     } finally {
-      setIsLoading(false);
+      if (reqId === requestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadData(selectedCategoryId);
-  }, [selectedCategoryId]);
+    const syncFromUrl = () => {
+      const { categoryId, search } = parseCatalogParams();
+      setSelectedCategoryId(categoryId);
+      setSearchQuery(search);
+    };
+
+    syncFromUrl();
+    window.addEventListener('popstate', syncFromUrl);
+    window.addEventListener('the-office:catalog-url-change', syncFromUrl);
+    return () => {
+      window.removeEventListener('popstate', syncFromUrl);
+      window.removeEventListener('the-office:catalog-url-change', syncFromUrl);
+    };
+  }, []);
+
+  useEffect(() => {
+    loadData(selectedCategoryId, searchQuery);
+  }, [selectedCategoryId, searchQuery]);
+
+  const updateCatalogUrl = (nextCategoryId, nextSearch, usePush = false) => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (nextCategoryId !== null && nextCategoryId !== undefined) {
+      url.searchParams.set('categoryId', String(nextCategoryId));
+    } else {
+      url.searchParams.delete('categoryId');
+    }
+
+    if (nextSearch && nextSearch.trim()) {
+      url.searchParams.set('search', nextSearch.trim());
+    } else {
+      url.searchParams.delete('search');
+    }
+
+    const nextUrlStr = `${url.pathname}${url.search}${url.hash}`;
+    if (usePush) {
+      window.history.pushState({}, '', nextUrlStr);
+    } else {
+      window.history.replaceState({}, '', nextUrlStr);
+    }
+  };
 
   const handleCategorySelect = (catId) => {
     setSelectedCategoryId(catId);
+    updateCatalogUrl(catId, searchQuery, false);
   };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    updateCatalogUrl(selectedCategoryId, '', true);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('the-office:catalog-url-change'));
+    }
+  };
+
+  const handleResetAllFilters = () => {
+    setSelectedCategoryId(null);
+    setSearchQuery('');
+    updateCatalogUrl(null, '', true);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('the-office:catalog-url-change'));
+    }
+  };
+
+  const buildProductDetailHref = (productId) => {
+    const params = new URLSearchParams();
+    if (selectedCategoryId !== null && selectedCategoryId !== undefined) {
+      params.set('categoryId', String(selectedCategoryId));
+    }
+    if (searchQuery && searchQuery.trim()) {
+      params.set('search', searchQuery.trim());
+    }
+    const queryStr = params.toString();
+    return queryStr ? `/products/${productId}?${queryStr}` : `/products/${productId}`;
+  };
+
+  const activeCategoryName =
+    selectedCategoryId !== null
+      ? categories.find((c) => c.id === selectedCategoryId)?.name || null
+      : null;
 
   return (
     <section
@@ -44,7 +153,7 @@ export default function CatalogSection() {
       aria-label="Catálogo de productos"
     >
       {/* Header with Index Counter and Category Filter */}
-      <div className="flex items-end justify-between border-b border-brand-dark/[0.08] pb-3 mb-6 sm:mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-brand-dark/[0.08] pb-3 mb-6 sm:mb-8">
         <div className="flex items-baseline gap-3">
           <h2 className="text-sm sm:text-base font-semibold tracking-tight text-brand-dark uppercase">
             Selected Catalog
@@ -54,12 +163,12 @@ export default function CatalogSection() {
           </span>
         </div>
 
-        {/* Dynamic Category Filter Tabs (Desktop & Tablet) */}
-        <div className="hidden sm:flex items-center gap-5 text-xs font-medium text-brand-dark/45">
+        {/* Dynamic Category Filter Tabs (Mobile, Tablet & Desktop) */}
+        <div className="flex items-center gap-4 sm:gap-5 overflow-x-auto text-xs font-medium text-brand-dark/45">
           <button
             type="button"
             onClick={() => handleCategorySelect(null)}
-            className={`transition-colors cursor-pointer pb-0.5 ${
+            className={`transition-colors cursor-pointer pb-0.5 whitespace-nowrap ${
               selectedCategoryId === null
                 ? 'text-brand-dark font-semibold border-b border-brand-dark'
                 : 'hover:text-brand-dark'
@@ -72,7 +181,7 @@ export default function CatalogSection() {
               key={cat.id}
               type="button"
               onClick={() => handleCategorySelect(cat.id)}
-              className={`transition-colors cursor-pointer pb-0.5 ${
+              className={`transition-colors cursor-pointer pb-0.5 whitespace-nowrap ${
                 selectedCategoryId === cat.id
                   ? 'text-brand-dark font-semibold border-b border-brand-dark'
                   : 'hover:text-brand-dark'
@@ -83,6 +192,36 @@ export default function CatalogSection() {
           ))}
         </div>
       </div>
+
+      {/* Active Search Filter Banner */}
+      {searchQuery && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 mb-6 sm:mb-8 px-3.5 py-2.5 bg-brand-dark/[0.03] border border-brand-dark/12 rounded-xs"
+          aria-live="polite"
+        >
+          <div className="flex items-center flex-wrap gap-1.5 text-xs text-brand-dark/75">
+            <span>Resultados de búsqueda para</span>
+            <span className="font-semibold text-brand-dark">
+              «{searchQuery}»
+            </span>
+            {activeCategoryName && (
+              <span className="text-brand-dark/55">
+                en <strong className="font-medium text-brand-dark">{activeCategoryName}</strong>
+              </span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleClearSearch}
+            aria-label="Limpiar búsqueda y volver al catálogo"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand-dark hover:bg-brand-dark hover:text-[#FAFAFA] border border-brand-dark/20 rounded-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 cursor-pointer"
+          >
+            <span>Limpiar búsqueda</span>
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+      )}
 
       {/* 1. Loading State: Minimalist Skeletons */}
       {isLoading && (
@@ -133,7 +272,7 @@ export default function CatalogSection() {
           <div className="pt-2">
             <button
               type="button"
-              onClick={() => loadData(selectedCategoryId)}
+              onClick={() => loadData(selectedCategoryId, searchQuery)}
               className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] bg-brand-dark hover:opacity-85 transition-opacity rounded-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 cursor-pointer"
             >
               Reintentar conexión
@@ -145,18 +284,33 @@ export default function CatalogSection() {
       {/* 3. Empty Catalog State */}
       {!isLoading && !errorMessage && products.length === 0 && (
         <div className="py-16 sm:py-24 text-center space-y-3">
-          <p className="text-sm font-medium text-brand-dark/60">
-            No hay productos disponibles en esta selección.
+          <p className="text-sm font-medium text-brand-dark/65">
+            {searchQuery
+              ? `No se encontraron productos que coincidan con «${searchQuery}»${
+                  activeCategoryName ? ` en ${activeCategoryName}` : ''
+                }.`
+              : 'No hay productos disponibles en esta selección.'}
           </p>
-          {selectedCategoryId !== null && (
-            <button
-              type="button"
-              onClick={() => handleCategorySelect(null)}
-              className="text-xs font-semibold text-brand-dark underline underline-offset-4 hover:opacity-70 transition-opacity cursor-pointer"
-            >
-              Ver todos los productos
-            </button>
-          )}
+          <div className="flex items-center justify-center flex-wrap gap-4 pt-1">
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="text-xs font-semibold text-brand-dark underline underline-offset-4 hover:opacity-70 transition-opacity cursor-pointer"
+              >
+                Limpiar búsqueda
+              </button>
+            )}
+            {(selectedCategoryId !== null || searchQuery) && (
+              <button
+                type="button"
+                onClick={handleResetAllFilters}
+                className="text-xs font-semibold text-brand-dark/70 hover:text-brand-dark underline underline-offset-4 transition-colors cursor-pointer"
+              >
+                Ver todos los productos
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -166,7 +320,7 @@ export default function CatalogSection() {
           {products.map((product) => (
             <article key={product.id} className="group relative flex flex-col">
               <a
-                href={`/products/${product.id}`}
+                href={buildProductDetailHref(product.id)}
                 className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/20 rounded-xs"
                 aria-label={`${product.title}${
                   product.category ? ' — ' + product.category : ''
@@ -198,8 +352,13 @@ export default function CatalogSection() {
                   <h3 className="text-xs sm:text-[13px] md:text-sm font-medium tracking-tight text-brand-dark group-hover:text-brand-dark/70 transition-colors duration-150 mt-0.5 line-clamp-1 leading-snug">
                     {product.title}
                   </h3>
-                  <p className="text-xs sm:text-[13px] md:text-sm font-semibold tracking-tight text-brand-dark tabular-nums mt-0.5">
-                    {product.formattedPrice}
+                  <p className="text-xs sm:text-[13px] md:text-sm font-semibold tracking-tight text-brand-dark tabular-nums mt-0.5 flex flex-wrap items-baseline gap-1.5">
+                    {product.formattedPreviousPrice && (
+                      <span className="text-brand-dark/45 line-through font-normal text-[11px] sm:text-xs">
+                        {product.formattedPreviousPrice}
+                      </span>
+                    )}
+                    <span>{product.formattedPrice}</span>
                   </p>
                 </div>
               </a>

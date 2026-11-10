@@ -1,5 +1,6 @@
 ---
 import CartButton from '../react/CartButton.jsx';
+import NavbarSearch from '../react/NavbarSearch.jsx';
 
 const navLinks = [
   { label: 'New Arrivals', href: '/#catalogo' },
@@ -44,8 +45,9 @@ const navLinks = [
         ))}
       </nav>
 
-      <!-- Right: Cart & Mobile Menu Toggle -->
+      <!-- Right: Search, Cart & Mobile Menu Toggle -->
       <div class="flex items-center justify-end gap-1 shrink-0">
+        <NavbarSearch client:load />
         <CartButton client:load />
 
         <!-- Mobile Menu Button -->

@@ -1,6 +1,7 @@
 ---
 import "../styles/global.css";
 import Navbar from "../components/ui/Navbar.astro";
+import { WHATSAPP_CONTACT_URL, SOCIAL_LINKS } from "../utils/contact";
 
 interface Props {
   title?: string;
@@ -49,7 +50,7 @@ const {
     >
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 md:py-16">
         <div class="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
-          <!-- Brand Column with elevated BA -->
+          <!-- Column A: Brand Information (The Office BA) -->
           <div class="md:col-span-6 space-y-3">
             <span
               class="text-sm font-bold tracking-tight text-brand-dark uppercase inline-flex items-baseline"
@@ -68,95 +69,80 @@ const {
             </p>
           </div>
 
-          <!-- Navigation Links in English -->
+          <!-- Column B: Atención al Cliente -->
           <div class="md:col-span-3 space-y-3">
-            <h4
-              class="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/40"
+            <h2
+              class="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/45"
             >
-              Collection
-            </h4>
+              Atención al Cliente
+            </h2>
             <ul class="space-y-2">
               <li>
                 <a
-                  href="/#catalogo"
-                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+                  href={WHATSAPP_CONTACT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center gap-2.5 py-1.5 text-xs sm:text-sm text-brand-dark/70 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 rounded-xs"
                 >
-                  New Arrivals
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/#catalogo"
-                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
-                >
-                  Shop All
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/#catalogo"
-                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
-                >
-                  Tops
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/#catalogo"
-                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
-                >
-                  Bottoms
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/#catalogo"
-                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
-                >
-                  Sneakers
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/#catalogo"
-                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
-                >
-                  Accessories
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="shrink-0 text-brand-dark/65"
+                    aria-hidden="true"
+                  >
+                    <path d="M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9L3 21"></path>
+                    <path
+                      d="M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1a5 5 0 0 0 5 5h1a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1"
+                    ></path>
+                  </svg>
+                  <span>Contactar por WhatsApp</span>
                 </a>
               </li>
             </ul>
           </div>
 
-          <!-- Service & Help -->
+          <!-- Column C: Redes Sociales -->
           <div class="md:col-span-3 space-y-3">
-            <h4
-              class="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/40"
+            <h2
+              class="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/45"
             >
-              Info & Support
-            </h4>
+              Redes Sociales
+            </h2>
             <ul class="space-y-2">
               <li>
                 <a
-                  href="/#catalogo"
-                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+                  href={SOCIAL_LINKS.instagram}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center gap-2.5 py-1.5 text-xs sm:text-sm text-brand-dark/70 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 rounded-xs"
                 >
-                  Shipping Info
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/#catalogo"
-                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
-                >
-                  Returns & Exchanges
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/#catalogo"
-                  class="text-xs sm:text-sm text-brand-dark/65 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
-                >
-                  Customer Care
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="shrink-0 text-brand-dark/65"
+                    aria-hidden="true"
+                  >
+                    <rect width="20" height="20" x="2" y="2" rx="5" ry="5"
+                    ></rect>
+                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"
+                    ></path>
+                    <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line>
+                  </svg>
+                  <span>Instagram</span>
                 </a>
               </li>
             </ul>
@@ -173,7 +159,7 @@ const {
           <div class="flex items-center gap-3.5">
             <a
               href="/admin/login"
-              class="text-[11px] font-mono tracking-wider text-brand-dark/40 hover:text-brand-dark transition-colors duration-150 uppercase focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+              class="text-[11px] font-mono tracking-wider text-brand-dark/40 hover:text-brand-dark transition-colors duration-150 uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 rounded-xs"
             >
               Admin Access
             </a>

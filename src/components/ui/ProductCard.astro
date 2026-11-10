@@ -1,7 +1,12 @@
 ---
+import { formatPrice, formatPriceRange } from '../../services/api';
+
 interface Props {
   title: string;
   price: number;
+  previousPrice?: number;
+  minPrice?: number;
+  maxPrice?: number;
   image: string;
   category?: string;
   slug?: string;
@@ -9,14 +14,17 @@ interface Props {
   badge?: string;
 }
 
-const { title, price, image, category, slug, id, badge } = Astro.props;
+const { title, price, previousPrice, minPrice, maxPrice, image, category, slug, id, badge } = Astro.props;
 const productHref = `/products/${id ?? slug ?? '#'}`;
 
-const formattedPrice = new Intl.NumberFormat('es-AR', {
-  style: 'currency',
-  currency: 'ARS',
-  minimumFractionDigits: 0,
-}).format(price);
+const hasPriceRange =
+  minPrice !== undefined && maxPrice !== undefined && Number(minPrice) !== Number(maxPrice);
+const formattedPrice = hasPriceRange
+  ? formatPriceRange(minPrice, maxPrice)
+  : formatPrice(price);
+const hasDiscount =
+  previousPrice !== undefined && Number(previousPrice) > Number(price) && Number(price) > 0;
+const formattedPreviousPrice = hasDiscount ? formatPrice(previousPrice) : null;
 ---
 
 <article class="group relative flex flex-col">
@@ -51,8 +59,13 @@ const formattedPrice = new Intl.NumberFormat('es-AR', {
       <h3 class="text-xs sm:text-[13px] md:text-sm font-medium tracking-tight text-brand-dark group-hover:text-brand-dark/70 transition-colors duration-150 mt-0.5 line-clamp-1 leading-snug">
         {title}
       </h3>
-      <p class="text-xs sm:text-[13px] md:text-sm font-semibold tracking-tight text-brand-dark tabular-nums mt-0.5">
-        {formattedPrice}
+      <p class="text-xs sm:text-[13px] md:text-sm font-semibold tracking-tight text-brand-dark tabular-nums mt-0.5 flex flex-wrap items-baseline gap-1.5">
+        {formattedPreviousPrice && (
+          <span class="text-brand-dark/45 line-through font-normal text-[11px] sm:text-xs">
+            {formattedPreviousPrice}
+          </span>
+        )}
+        <span>{formattedPrice}</span>
       </p>
     </div>
   </a>

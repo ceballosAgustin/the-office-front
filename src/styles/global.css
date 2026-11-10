@@ -48,3 +48,82 @@
     outline-offset: 2px;
   }
 }
+
+@layer components {
+  .form-input,
+  .form-select,
+  .form-textarea {
+    background-color: #ffffff;
+    color: var(--color-brand-dark);
+    border: 1px solid color-mix(in oklab, var(--color-brand-dark) 20%, transparent);
+    border-radius: var(--radius-xs, 0.125rem);
+    transition-property: color, background-color, border-color;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .form-input::placeholder,
+  .form-textarea::placeholder {
+    color: color-mix(in oklab, var(--color-brand-dark) 35%, transparent);
+  }
+
+  .form-input:focus,
+  .form-input:focus-visible,
+  .form-select:focus,
+  .form-select:focus-visible,
+  .form-textarea:focus,
+  .form-textarea:focus-visible {
+    outline: none;
+    border-color: var(--color-brand-dark);
+    box-shadow: 0 0 0 1px var(--color-brand-dark);
+  }
+
+  .form-input:disabled,
+  .form-select:disabled,
+  .form-textarea:disabled {
+    opacity: 0.55;
+    background-color: color-mix(in oklab, var(--color-brand-dark) 3%, #ffffff);
+    cursor: not-allowed;
+  }
+
+  .form-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%231D110D' stroke-width='1.75'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.65rem center;
+    background-size: 0.95rem 0.95rem;
+    padding-right: 2.25rem;
+  }
+
+  .form-textarea {
+    resize: vertical;
+    line-height: 1.625;
+  }
+
+  .form-input-error,
+  :is(.form-input, .form-select, .form-textarea)[aria-invalid="true"] {
+    border-color: #dc2626;
+  }
+
+  .form-input-error:focus,
+  .form-input-error:focus-visible,
+  :is(.form-input, .form-select, .form-textarea)[aria-invalid="true"]:focus,
+  :is(.form-input, .form-select, .form-textarea)[aria-invalid="true"]:focus-visible {
+    outline: none;
+    border-color: #dc2626;
+    box-shadow: 0 0 0 1px #dc2626;
+  }
+}
+
+/* Prevent iOS Safari auto-zoom on mobile viewports (< 640px) by ensuring 16px (1rem) font-size */
+@media (max-width: 639.98px) {
+  input[type="text"],
+  input[type="search"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  textarea,
+  select {
+    font-size: 1rem;
+  }
+}

@@ -101,6 +101,9 @@ export default function AdminCategoriesView() {
     const nextName = e.target.value;
     setNameInput(nextName);
     setFormModalError(null);
+    if (formFieldErrors.name) {
+      setFormFieldErrors((prev) => ({ ...prev, name: undefined }));
+    }
 
     // In create mode (or if auto-sync is active), suggest slug automatically as user types name
     if (!editingCategory && !isSlugManuallyEdited) {
@@ -113,6 +116,9 @@ export default function AdminCategoriesView() {
     setSlugInput(nextSlug);
     setIsSlugManuallyEdited(true);
     setFormModalError(null);
+    if (formFieldErrors.slug) {
+      setFormFieldErrors((prev) => ({ ...prev, slug: undefined }));
+    }
   };
 
   const handleRegenerateSlugFromName = () => {
@@ -122,6 +128,9 @@ export default function AdminCategoriesView() {
       setIsSlugManuallyEdited(false);
     }
     setFormModalError(null);
+    if (formFieldErrors.slug) {
+      setFormFieldErrors((prev) => ({ ...prev, slug: undefined }));
+    }
   };
 
   const previewSlug = suggestCategorySlug(
@@ -137,19 +146,24 @@ export default function AdminCategoriesView() {
 
     const trimmedName = nameInput.trim();
     if (!trimmedName) {
-      setFormModalError('El nombre de la categoría es obligatorio.');
+      const msg = 'El nombre de la categoría es obligatorio.';
+      setFormFieldErrors({ name: msg });
+      setFormModalError(msg);
       return;
     }
     if (trimmedName.length > 100) {
-      setFormModalError(
-        'El nombre de la categoría no puede superar los 100 caracteres.'
-      );
+      const msg =
+        'El nombre de la categoría no puede superar los 100 caracteres.';
+      setFormFieldErrors({ name: msg });
+      setFormModalError(msg);
       return;
     }
 
     const trimmedSlug = slugInput.trim();
     if (trimmedSlug.length > 100) {
-      setFormModalError('El slug no puede superar los 100 caracteres.');
+      const msg = 'El slug no puede superar los 100 caracteres.';
+      setFormFieldErrors({ slug: msg });
+      setFormModalError(msg);
       return;
     }
 
@@ -620,10 +634,14 @@ export default function AdminCategoriesView() {
                   type="text"
                   maxLength={100}
                   required
+                  disabled={isSubmittingForm}
                   value={nameInput}
                   onChange={handleNameChange}
                   placeholder="Ej. Tops, Bottoms, Sneakers, Accessories"
-                  className="w-full h-10 px-3 text-xs sm:text-sm text-brand-dark bg-white border border-brand-dark/20 rounded-xs focus:outline-none focus:border-brand-dark focus:ring-1 focus:ring-brand-dark"
+                  aria-invalid={formFieldErrors.name ? 'true' : undefined}
+                  className={`form-input w-full h-10 px-3 text-base sm:text-sm ${
+                    formFieldErrors.name ? 'form-input-error' : ''
+                  }`}
                 />
                 {formFieldErrors.name && (
                   <p className="text-xs text-red-600">{formFieldErrors.name}</p>
@@ -641,8 +659,9 @@ export default function AdminCategoriesView() {
                   </label>
                   <button
                     type="button"
+                    disabled={isSubmittingForm}
                     onClick={handleRegenerateSlugFromName}
-                    className="text-[10px] font-semibold uppercase tracking-wider text-brand-dark/60 hover:text-brand-dark underline underline-offset-2 cursor-pointer"
+                    className="text-[10px] font-semibold uppercase tracking-wider text-brand-dark/60 hover:text-brand-dark underline underline-offset-2 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
                   >
                     Sugerir desde nombre
                   </button>
@@ -651,12 +670,16 @@ export default function AdminCategoriesView() {
                   id="category-slug-input"
                   type="text"
                   maxLength={100}
+                  disabled={isSubmittingForm}
                   value={slugInput}
                   onChange={handleSlugChange}
                   placeholder={
                     suggestCategorySlug(nameInput) || 'ej. tops, bottoms'
                   }
-                  className="w-full h-10 px-3 font-mono text-xs sm:text-sm text-brand-dark bg-white border border-brand-dark/20 rounded-xs focus:outline-none focus:border-brand-dark focus:ring-1 focus:ring-brand-dark"
+                  aria-invalid={formFieldErrors.slug ? 'true' : undefined}
+                  className={`form-input w-full h-10 px-3 font-mono text-base sm:text-sm ${
+                    formFieldErrors.slug ? 'form-input-error' : ''
+                  }`}
                 />
                 {formFieldErrors.slug && (
                   <p className="text-xs text-red-600">{formFieldErrors.slug}</p>

@@ -5,8 +5,8 @@ import {
   fetchAdminInquirySummaryCounts,
   fetchAdminInquiries,
   formatPrice,
-  formatDateTime,
 } from '../../../services/api';
+import { formatArgentinaDateTime } from '../../../utils/date';
 
 function getTotalItemsCount(inquiry) {
   if (!Array.isArray(inquiry?.items)) return 0;
@@ -110,6 +110,12 @@ export default function AdminDashboardView() {
             >
               Actualizar
             </button>
+            <a
+              href="/admin/orders"
+              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/20 hover:border-brand-dark rounded-xs transition-colors"
+            >
+              Orders
+            </a>
             <a
               href="/admin/products"
               className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/20 hover:border-brand-dark rounded-xs transition-colors"
@@ -247,7 +253,7 @@ export default function AdminDashboardView() {
                             </a>
                           </td>
                           <td className="py-3.5 px-4 text-xs text-brand-dark/65 whitespace-nowrap tabular-nums">
-                            {formatDateTime(inq.createdAt)}
+                            {formatArgentinaDateTime(inq.createdAt)}
                           </td>
                           <td className="py-3.5 px-4 text-brand-dark">
                             {inq.contactName && inq.contactName.trim() ? (

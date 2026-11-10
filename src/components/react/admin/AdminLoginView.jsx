@@ -124,10 +124,11 @@ export default function AdminLoginView() {
                 type="text"
                 autoComplete="username"
                 required
+                disabled={isSubmitting}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="admin"
-                className="w-full h-11 px-3.5 text-sm text-brand-dark bg-white border border-brand-dark/20 rounded-xs placeholder:text-brand-dark/30 focus:outline-none focus:border-brand-dark focus:ring-1 focus:ring-brand-dark transition-colors"
+                className="form-input w-full h-11 px-3.5 text-base sm:text-sm"
               />
             </div>
 
@@ -144,10 +145,11 @@ export default function AdminLoginView() {
                 type="password"
                 autoComplete="current-password"
                 required
+                disabled={isSubmitting}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full h-11 px-3.5 text-sm text-brand-dark bg-white border border-brand-dark/20 rounded-xs placeholder:text-brand-dark/30 focus:outline-none focus:border-brand-dark focus:ring-1 focus:ring-brand-dark transition-colors"
+                className="form-input w-full h-11 px-3.5 text-base sm:text-sm"
               />
             </div>
 

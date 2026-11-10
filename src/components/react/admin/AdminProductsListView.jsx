@@ -142,6 +142,14 @@ export default function AdminProductsListView() {
     setAppliedSearch(searchInput.trim());
   };
 
+  const handleClearSearchInput = () => {
+    setSearchInput('');
+    if (appliedSearch) {
+      setAppliedSearch('');
+      setPage(0);
+    }
+  };
+
   const handleClearFilters = () => {
     setStatusFilter('ALL');
     setCategoryFilter('');
@@ -293,7 +301,7 @@ export default function AdminProductsListView() {
                   setCategoryFilter(e.target.value);
                   setPage(0);
                 }}
-                className="h-9 px-3 text-xs font-medium text-brand-dark bg-white border border-brand-dark/20 rounded-xs focus:outline-none focus:border-brand-dark"
+                className="form-select h-9 pl-3 pr-9 text-base sm:text-xs font-medium"
               >
                 <option value="">Todas las categorías</option>
                 {categories.map((cat) => (
@@ -305,19 +313,37 @@ export default function AdminProductsListView() {
 
               <form
                 onSubmit={handleSearchSubmit}
-                className="flex items-center gap-1.5"
+                className="flex items-center gap-1.5 w-full sm:w-auto"
               >
-                <input
-                  type="search"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Buscar por nombre..."
-                  aria-label="Buscar producto por nombre"
-                  className="h-9 px-3 text-xs text-brand-dark bg-white border border-brand-dark/20 rounded-xs placeholder:text-brand-dark/35 focus:outline-none focus:border-brand-dark min-w-[180px]"
-                />
+                <div className="relative flex-1 sm:w-56">
+                  <input
+                    type="search"
+                    value={searchInput}
+                    onChange={(e) => {
+                      setSearchInput(e.target.value);
+                      if (!e.target.value.trim() && appliedSearch) {
+                        setAppliedSearch('');
+                        setPage(0);
+                      }
+                    }}
+                    placeholder="Buscar por nombre..."
+                    aria-label="Buscar producto por nombre"
+                    className="form-input w-full h-9 pl-3 pr-8 text-base sm:text-xs [&::-webkit-search-cancel-button]:hidden"
+                  />
+                  {searchInput && (
+                    <button
+                      type="button"
+                      onClick={handleClearSearchInput}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-brand-dark/45 hover:text-brand-dark cursor-pointer"
+                      aria-label="Limpiar búsqueda"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
                 <button
                   type="submit"
-                  className="h-9 px-3 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs hover:opacity-90 transition-opacity cursor-pointer"
+                  className="h-9 px-3 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs hover:opacity-90 transition-opacity cursor-pointer shrink-0"
                 >
                   Buscar
                 </button>

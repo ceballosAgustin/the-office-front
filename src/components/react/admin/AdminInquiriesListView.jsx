@@ -4,8 +4,8 @@ import InquiryStatusBadge from './InquiryStatusBadge';
 import {
   fetchAdminInquiries,
   formatPrice,
-  formatDateTime,
 } from '../../../services/api';
+import { formatArgentinaDateTime } from '../../../utils/date';
 
 const STATUS_FILTERS = [
   { value: '', label: 'Todas' },
@@ -272,12 +272,21 @@ export default function AdminInquiriesListView() {
                             </a>
                             {inq.orderNumber && (
                               <span className="block text-[10px] font-mono text-emerald-800 mt-0.5">
-                                Pedido: {inq.orderNumber}
+                                {inq.orderId ? (
+                                  <a
+                                    href={`/admin/orders/detail?id=${inq.orderId}`}
+                                    className="hover:underline underline-offset-2"
+                                  >
+                                    Pedido: {inq.orderNumber} ↗
+                                  </a>
+                                ) : (
+                                  <>Pedido: {inq.orderNumber}</>
+                                )}
                               </span>
                             )}
                           </td>
                           <td className="py-4 px-4 text-xs text-brand-dark/65 whitespace-nowrap tabular-nums">
-                            {formatDateTime(inq.createdAt)}
+                            {formatArgentinaDateTime(inq.createdAt)}
                           </td>
                           <td className="py-4 px-4 text-brand-dark">
                             {inq.contactName && inq.contactName.trim() ? (
@@ -340,7 +349,7 @@ export default function AdminInquiriesListView() {
                           {inq.inquiryNumber}
                         </span>
                         <span className="block text-[11px] text-brand-dark/55 tabular-nums">
-                          {formatDateTime(inq.createdAt)}
+                          {formatArgentinaDateTime(inq.createdAt)}
                         </span>
                       </div>
                       <InquiryStatusBadge status={inq.status} />

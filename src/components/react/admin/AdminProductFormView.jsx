@@ -667,25 +667,32 @@ export default function AdminProductFormView({
 
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
-      setFormError('El nombre del producto es obligatorio.');
+      const msg = 'El nombre del producto es obligatorio.';
+      setFieldErrors({ title: msg });
+      setFormError(msg);
       return;
     }
     if (trimmedTitle.length > 200) {
-      setFormError('El nombre del producto no puede superar los 200 caracteres.');
+      const msg = 'El nombre del producto no puede superar los 200 caracteres.';
+      setFieldErrors({ title: msg });
+      setFormError(msg);
       return;
     }
 
     const numericPrice = Number(price);
     if (!price || Number.isNaN(numericPrice) || numericPrice <= 0) {
-      setFormError('Ingresá un precio válido mayor a cero.');
+      const msg = 'Ingresá un precio válido mayor a cero.';
+      setFieldErrors({ price: msg });
+      setFormError(msg);
       return;
     }
 
     const numericCategoryId = Number(categoryId);
     if (!categoryId || Number.isNaN(numericCategoryId) || numericCategoryId <= 0) {
-      setFormError(
-        'Debés seleccionar una categoría válida antes de guardar el producto.'
-      );
+      const msg =
+        'Debés seleccionar una categoría válida antes de guardar el producto.';
+      setFieldErrors({ categoryId: msg });
+      setFormError(msg);
       return;
     }
 
@@ -1089,10 +1096,19 @@ export default function AdminProductFormView({
                       type="text"
                       maxLength={200}
                       required
+                      disabled={isSaving}
                       value={title}
-                      onChange={(e) => setTitle(e.target.value)}
+                      onChange={(e) => {
+                        setTitle(e.target.value);
+                        if (fieldErrors.title) {
+                          setFieldErrors((prev) => ({ ...prev, title: undefined }));
+                        }
+                      }}
                       placeholder="Ej. Remera Oversize Heavyweight"
-                      className="w-full h-11 px-3.5 text-sm text-brand-dark bg-white border border-brand-dark/20 rounded-xs focus:outline-none focus:border-brand-dark focus:ring-1 focus:ring-brand-dark"
+                      aria-invalid={fieldErrors.title ? 'true' : undefined}
+                      className={`form-input w-full h-11 px-3.5 text-base sm:text-sm ${
+                        fieldErrors.title ? 'form-input-error' : ''
+                      }`}
                     />
                     {fieldErrors.title && (
                       <p className="text-xs text-red-600">{fieldErrors.title}</p>
@@ -1106,7 +1122,7 @@ export default function AdminProductFormView({
                         htmlFor="product-price"
                         className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
                       >
-                        Precio (ARS) <span className="text-red-600">*</span>
+                        Precio (USD) <span className="text-red-600">*</span>
                       </label>
                       <input
                         id="product-price"
@@ -1114,10 +1130,19 @@ export default function AdminProductFormView({
                         min="1"
                         step="0.01"
                         required
+                        disabled={isSaving}
                         value={price}
-                        onChange={(e) => setPrice(e.target.value)}
-                        placeholder="Ej. 35000"
-                        className="w-full h-11 px-3.5 text-sm text-brand-dark bg-white border border-brand-dark/20 rounded-xs tabular-nums focus:outline-none focus:border-brand-dark focus:ring-1 focus:ring-brand-dark"
+                        onChange={(e) => {
+                          setPrice(e.target.value);
+                          if (fieldErrors.price) {
+                            setFieldErrors((prev) => ({ ...prev, price: undefined }));
+                          }
+                        }}
+                        placeholder="Ej. 150"
+                        aria-invalid={fieldErrors.price ? 'true' : undefined}
+                        className={`form-input w-full h-11 px-3.5 text-base sm:text-sm tabular-nums ${
+                          fieldErrors.price ? 'form-input-error' : ''
+                        }`}
                       />
                       {price && Number(price) > 0 && (
                         <p className="text-[11px] text-brand-dark/50 tabular-nums">
@@ -1141,10 +1166,21 @@ export default function AdminProductFormView({
                       <select
                         id="product-category"
                         required
-                        disabled={categories.length === 0}
+                        disabled={categories.length === 0 || isSaving}
                         value={categoryId}
-                        onChange={(e) => setCategoryId(e.target.value)}
-                        className="w-full h-11 px-3.5 text-sm text-brand-dark bg-white border border-brand-dark/20 rounded-xs focus:outline-none focus:border-brand-dark focus:ring-1 focus:ring-brand-dark disabled:opacity-50"
+                        onChange={(e) => {
+                          setCategoryId(e.target.value);
+                          if (fieldErrors.categoryId) {
+                            setFieldErrors((prev) => ({
+                              ...prev,
+                              categoryId: undefined,
+                            }));
+                          }
+                        }}
+                        aria-invalid={fieldErrors.categoryId ? 'true' : undefined}
+                        className={`form-select w-full h-11 pl-3.5 pr-9 text-base sm:text-sm ${
+                          fieldErrors.categoryId ? 'form-input-error' : ''
+                        }`}
                       >
                         <option value="">
                           {categories.length === 0
@@ -1176,10 +1212,22 @@ export default function AdminProductFormView({
                     <textarea
                       id="product-description"
                       rows={4}
+                      disabled={isSaving}
                       value={description}
-                      onChange={(e) => setDescription(e.target.value)}
+                      onChange={(e) => {
+                        setDescription(e.target.value);
+                        if (fieldErrors.description) {
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            description: undefined,
+                          }));
+                        }
+                      }}
                       placeholder="Detalle de materiales, calce, gramaje y confección..."
-                      className="w-full p-3.5 text-sm text-brand-dark bg-white border border-brand-dark/20 rounded-xs focus:outline-none focus:border-brand-dark focus:ring-1 focus:ring-brand-dark"
+                      aria-invalid={fieldErrors.description ? 'true' : undefined}
+                      className={`form-textarea w-full p-3.5 text-base sm:text-sm resize-y leading-relaxed ${
+                        fieldErrors.description ? 'form-input-error' : ''
+                      }`}
                     />
                     {fieldErrors.description && (
                       <p className="text-xs text-red-600">
@@ -1316,11 +1364,12 @@ export default function AdminProductFormView({
                           </div>
                         ) : (
                           <select
+                            disabled={isSaving}
                             value={activeSingleVariant?.size || singleSizeLabel}
                             onChange={(e) =>
                               handleSingleSizeLabelChange(e.target.value)
                             }
-                            className="w-full h-10 px-3 text-xs font-semibold text-brand-dark bg-white border border-brand-dark/20 rounded-xs"
+                            className="form-select w-full h-10 pl-3 pr-9 text-base sm:text-xs font-semibold"
                           >
                             <option value="Único">Único</option>
                             <option value="One Size">One Size</option>
@@ -1340,11 +1389,12 @@ export default function AdminProductFormView({
                           type="number"
                           min="0"
                           step="1"
+                          disabled={isSaving}
                           value={activeSingleVariant?.stock ?? 0}
                           onChange={(e) =>
                             handleSingleSizeStockChange(e.target.value)
                           }
-                          className="w-full h-10 px-3 text-sm font-semibold text-brand-dark bg-white border border-brand-dark/20 rounded-xs tabular-nums focus:outline-none focus:border-brand-dark"
+                          className="form-input w-full h-10 px-3 text-base sm:text-sm font-semibold tabular-nums"
                         />
                       </div>
                     </div>
@@ -1387,6 +1437,7 @@ export default function AdminProductFormView({
                             id="new-variant-size"
                             type="text"
                             maxLength={50}
+                            disabled={isSaving}
                             value={newVariantSize}
                             onChange={(e) => setNewVariantSize(e.target.value)}
                             onKeyDown={(e) => {
@@ -1396,7 +1447,7 @@ export default function AdminProductFormView({
                               }
                             }}
                             placeholder="Ingresá un talle..."
-                            className="w-full h-9 px-3 text-xs text-brand-dark bg-white border border-brand-dark/20 rounded-xs"
+                            className="form-input w-full h-9 px-3 text-base sm:text-xs"
                           />
                         </div>
 
@@ -1412,9 +1463,10 @@ export default function AdminProductFormView({
                             type="number"
                             min="0"
                             step="1"
+                            disabled={isSaving}
                             value={newVariantStock}
                             onChange={(e) => setNewVariantStock(e.target.value)}
-                            className="w-full h-9 px-3 text-xs text-brand-dark bg-white border border-brand-dark/20 rounded-xs tabular-nums"
+                            className="form-input w-full h-9 px-3 text-base sm:text-xs tabular-nums"
                           />
                         </div>
 
@@ -1465,6 +1517,7 @@ export default function AdminProductFormView({
                                   <input
                                     type="text"
                                     maxLength={50}
+                                    disabled={isSaving}
                                     value={v.size}
                                     onChange={(e) =>
                                       handleVariantSizeChange(
@@ -1473,7 +1526,7 @@ export default function AdminProductFormView({
                                       )
                                     }
                                     aria-label="Nombre del talle nuevo"
-                                    className="w-24 h-9 px-2.5 text-xs font-bold uppercase text-brand-dark bg-[#FAF9F6] border border-brand-dark/25 rounded-xs"
+                                    className="form-input w-24 h-9 px-2.5 text-base sm:text-xs font-bold uppercase bg-[#FAF9F6]"
                                   />
                                 )}
                                 <div>
@@ -1501,6 +1554,7 @@ export default function AdminProductFormView({
                                     type="number"
                                     min="0"
                                     step="1"
+                                    disabled={isSaving}
                                     value={v.stock}
                                     onChange={(e) =>
                                       handleVariantStockChange(
@@ -1508,7 +1562,7 @@ export default function AdminProductFormView({
                                         e.target.value
                                       )
                                     }
-                                    className="w-20 h-9 px-2.5 text-xs font-semibold text-brand-dark bg-white border border-brand-dark/20 rounded-xs tabular-nums text-right"
+                                    className="form-input w-20 h-9 px-2.5 text-base sm:text-xs font-semibold tabular-nums text-right"
                                   />
                                 </div>
 
@@ -1757,7 +1811,7 @@ export default function AdminProductFormView({
 
                   <label
                     htmlFor="product-files-input"
-                    className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-brand-dark/20 hover:border-brand-dark bg-white/75 rounded-xs cursor-pointer transition-colors text-center space-y-1.5"
+                    className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-brand-dark/20 hover:border-brand-dark focus-within:border-brand-dark focus-within:ring-1 focus-within:ring-brand-dark focus-within:bg-white bg-white/75 rounded-xs cursor-pointer transition-colors text-center space-y-1.5"
                   >
                     <span className="text-xs font-semibold uppercase tracking-wider text-brand-dark">
                       + Seleccionar archivos de imagen
@@ -1770,6 +1824,7 @@ export default function AdminProductFormView({
                       type="file"
                       accept="image/*"
                       multiple
+                      disabled={isSaving}
                       onChange={handleFileSelect}
                       className="sr-only"
                     />

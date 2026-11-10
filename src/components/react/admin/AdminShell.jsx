@@ -53,9 +53,10 @@ export default function AdminShell({ activeSection = 'dashboard', children }) {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', href: '/admin' },
+    { id: 'orders', label: 'Orders', href: '/admin/orders' },
+    { id: 'inquiries', label: 'Consultas Comerciales', href: '/admin/inquiries' },
     { id: 'products', label: 'Products', href: '/admin/products' },
     { id: 'categories', label: 'Categories', href: '/admin/categories' },
-    { id: 'inquiries', label: 'Consultas Comerciales', href: '/admin/inquiries' },
   ];
 
   return (

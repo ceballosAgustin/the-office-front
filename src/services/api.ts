@@ -10,8 +10,20 @@ import {
   clearAdminSession,
   isAdminRole,
 } from './adminAuth';
+import {
+  formatArgentinaDateTime,
+  formatArgentinaDate,
+} from '../utils/date';
+import {
+  formatPrice,
+  formatPriceRange,
+} from '../utils/currency';
+
+export { formatArgentinaDateTime, formatArgentinaDate, formatPrice, formatPriceRange };
 
 export type InquiryStatus = 'NEW' | 'IN_PROGRESS' | 'CONVERTED' | 'NOT_CONVERTED';
+
+export type OrderStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED';
 
 export interface BackendProductImage {
   id: number;
@@ -25,6 +37,7 @@ export interface BackendVariant {
   id?: number;
   size: string;
   stock?: number;
+  price?: number | null;
   isActive?: boolean;
 }
 
@@ -33,6 +46,9 @@ export interface BackendProduct {
   title: string;
   description?: string | null;
   price: number;
+  previousPrice?: number | null;
+  compareAtPrice?: number | null;
+  originalPrice?: number | null;
   baseStock?: number | null;
   isActive?: boolean;
   categoryId?: number | null;
@@ -84,6 +100,11 @@ export interface Product {
   title: string;
   price: number;
   formattedPrice: string;
+  previousPrice?: number;
+  formattedPreviousPrice?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  hasVariantPriceRange?: boolean;
   description: string;
   category: string;
   categoryId?: number;
@@ -91,7 +112,13 @@ export interface Product {
   image: string;
   images: string[];
   availableSizes: string[];
-  variants: { id: number; size: string; stock: number }[];
+  variants: {
+    id: number;
+    size: string;
+    stock: number;
+    price?: number;
+    formattedPrice?: string;
+  }[];
   badge?: string;
 }
 
@@ -165,17 +192,36 @@ export interface ConfirmInquiryPayload {
   contactPhone?: string;
 }
 
+export interface BackendErrorResponse {
+  timestamp?: string;
+  status?: number;
+  error?: string;
+  message?: string;
+  fieldErrors?: Record<string, string> | null;
+}
+
 export class ApiError extends Error {
   status: number;
   isNotFound: boolean;
+  isConflict: boolean;
+  errorCode?: string;
+  timestamp?: string;
   fieldErrors?: Record<string, string>;
 
-  constructor(message: string, status: number, fieldErrors?: Record<string, string>) {
+  constructor(
+    message: string,
+    status: number,
+    fieldErrors?: Record<string, string>,
+    meta?: { errorCode?: string; timestamp?: string }
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.isNotFound = status === 404;
+    this.isConflict = status === 409;
     this.fieldErrors = fieldErrors;
+    this.errorCode = meta?.errorCode;
+    this.timestamp = meta?.timestamp;
   }
 }
 
@@ -187,14 +233,6 @@ export function getApiBaseUrl(): string {
     return import.meta.env.PUBLIC_API_URL;
   }
   return DEFAULT_API_URL;
-}
-
-export function formatPrice(price: number): string {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    minimumFractionDigits: 0,
-  }).format(price);
 }
 
 /**
@@ -224,26 +262,65 @@ export function mapBackendProduct(raw: BackendProduct): Product {
     sortedImages = [primaryImage];
   }
 
-  // Extract sizes from active variants
+  const priceNum = Number(raw.price) || 0;
+  const rawPrevPrice = Number(raw.previousPrice ?? raw.compareAtPrice ?? raw.originalPrice);
+  const hasDiscount = Number.isFinite(rawPrevPrice) && rawPrevPrice > priceNum && priceNum > 0;
+
+  // Extract sizes and optional variant-specific prices from active variants
   const variants = (raw.variants || [])
     .filter((v) => v.isActive !== false && v.id != null)
-    .map((v) => ({
-      id: Number(v.id),
-      size: v.size,
-      stock: v.stock ?? 0,
-    }));
+    .map((v) => {
+      const variantPriceNum =
+        v.price != null && Number.isFinite(Number(v.price)) && Number(v.price) > 0
+          ? Number(v.price)
+          : undefined;
+      return {
+        id: Number(v.id),
+        size: v.size,
+        stock: v.stock ?? 0,
+        ...(variantPriceNum !== undefined
+          ? { price: variantPriceNum, formattedPrice: formatPrice(variantPriceNum) }
+          : {}),
+      };
+    });
 
   const availableSizes = variants
     .filter((v) => v.stock > 0 || variants.every((x) => x.stock === 0))
     .map((v) => v.size);
 
-  const priceNum = Number(raw.price) || 0;
+  const variantPrices = variants
+    .map((v) => v.price)
+    .filter((p): p is number => typeof p === 'number' && Number.isFinite(p) && p > 0);
+
+  const minVariantPrice = variantPrices.length > 0 ? Math.min(...variantPrices) : undefined;
+  const maxVariantPrice = variantPrices.length > 0 ? Math.max(...variantPrices) : undefined;
+  const hasVariantPriceRange =
+    minVariantPrice !== undefined &&
+    maxVariantPrice !== undefined &&
+    minVariantPrice !== maxVariantPrice;
+
+  const formattedPrice = hasVariantPriceRange
+    ? formatPriceRange(minVariantPrice, maxVariantPrice)
+    : formatPrice(priceNum);
 
   return {
     id: String(raw.id),
     title: raw.title || 'Sin título',
     price: priceNum,
-    formattedPrice: formatPrice(priceNum),
+    formattedPrice,
+    ...(hasDiscount
+      ? {
+          previousPrice: rawPrevPrice,
+          formattedPreviousPrice: formatPrice(rawPrevPrice),
+        }
+      : {}),
+    ...(hasVariantPriceRange
+      ? {
+          minPrice: minVariantPrice,
+          maxPrice: maxVariantPrice,
+          hasVariantPriceRange: true,
+        }
+      : {}),
     description: raw.description || '',
     category: raw.categoryName || 'General',
     categoryId: raw.categoryId ?? undefined,
@@ -263,6 +340,7 @@ export async function fetchProducts(options?: {
   page?: number;
   size?: number;
   search?: string;
+  signal?: AbortSignal;
 }): Promise<Product[]> {
   const baseUrl = getApiBaseUrl();
   const url = new URL(
@@ -282,11 +360,16 @@ export async function fetchProducts(options?: {
   try {
     res = await fetch(url.toString(), {
       method: 'GET',
+      cache: 'no-store',
+      signal: options?.signal,
       headers: {
         Accept: 'application/json',
       },
     });
   } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw err;
+    }
     throw new ApiError(
       `No se pudo conectar con el servidor en ${baseUrl}. Verificá que el backend esté en ejecución.`,
       0
@@ -321,6 +404,7 @@ export async function fetchProductById(id: string | number): Promise<Product> {
   try {
     res = await fetch(url, {
       method: 'GET',
+      cache: 'no-store',
       headers: {
         Accept: 'application/json',
       },
@@ -424,31 +508,89 @@ export async function createInquiry(payload: InquiryRequestPayload): Promise<Inq
   }
 
   if (!res.ok) {
-    let errorMessage = `No se pudo registrar la consulta (${res.status}).`;
+    let errorMessage =
+      res.status === 409
+        ? 'No hay stock suficiente para completar la consulta con las cantidades solicitadas.'
+        : res.status === 404
+          ? 'Uno de los productos o variantes seleccionados ya no está disponible.'
+          : res.status === 400
+            ? 'Los datos de la consulta no son válidos. Verificá las variantes y cantidades seleccionadas.'
+            : `No se pudo registrar la consulta (${res.status}).`;
     let fieldErrors: Record<string, string> | undefined;
+    let errorCode: string | undefined;
+    let timestamp: string | undefined;
 
     try {
-      const errData = await res.json();
-      if (errData && typeof errData === 'object') {
-        if (errData.fieldErrors && typeof errData.fieldErrors === 'object') {
-          fieldErrors = errData.fieldErrors;
-          const details = Object.values(errData.fieldErrors).filter(Boolean).join(' • ');
-          if (details) {
-            errorMessage = details;
-          } else if (typeof errData.message === 'string' && errData.message.trim()) {
-            errorMessage = errData.message.trim();
+      const rawText = await res.text();
+      if (rawText && rawText.trim().length > 0) {
+        try {
+          const errData: BackendErrorResponse & Record<string, any> = JSON.parse(rawText);
+          if (errData && typeof errData === 'object') {
+            if (typeof errData.error === 'string' && errData.error.trim()) {
+              errorCode = errData.error.trim();
+            }
+            if (typeof errData.timestamp === 'string' && errData.timestamp.trim()) {
+              timestamp = errData.timestamp.trim();
+            }
+            if (
+              errData.fieldErrors &&
+              typeof errData.fieldErrors === 'object' &&
+              !Array.isArray(errData.fieldErrors)
+            ) {
+              fieldErrors = errData.fieldErrors;
+            }
+
+            const hasValidMessage =
+              typeof errData.message === 'string' && errData.message.trim().length > 0;
+            const fieldErrorDetails = fieldErrors
+              ? Object.values(fieldErrors).filter(Boolean).join(' • ')
+              : '';
+
+            if (res.status === 409) {
+              // 409 Conflict: prioritize ErrorResponse.message containing exact stock availability details
+              if (hasValidMessage) {
+                errorMessage = errData.message!.trim();
+              } else if (fieldErrorDetails) {
+                errorMessage = fieldErrorDetails;
+              }
+            } else if (res.status === 400) {
+              // 400 Bad Request: show validation details or message (inactive variant/product, qty <= 0, empty items)
+              if (fieldErrorDetails) {
+                errorMessage = fieldErrorDetails;
+              } else if (hasValidMessage) {
+                errorMessage = errData.message!.trim();
+              }
+            } else if (res.status === 404) {
+              // 404 Not Found: non-existent variant or product
+              if (hasValidMessage) {
+                errorMessage = `Uno de los productos o variantes ya no está disponible (${errData.message!.trim()}).`;
+              } else {
+                errorMessage =
+                  'Uno de los productos o variantes seleccionados ya no está disponible.';
+              }
+            } else if (hasValidMessage) {
+              errorMessage = errData.message!.trim();
+            } else if (fieldErrorDetails) {
+              errorMessage = fieldErrorDetails;
+            } else if (errorCode) {
+              errorMessage = errorCode;
+            }
           }
-        } else if (typeof errData.message === 'string' && errData.message.trim()) {
-          errorMessage = errData.message.trim();
-        } else if (typeof errData.error === 'string' && errData.error.trim()) {
-          errorMessage = errData.error.trim();
+        } catch {
+          // Plain text non-JSON response fallback
+          if (rawText.trim().length < 300) {
+            errorMessage = rawText.trim();
+          }
         }
       }
     } catch {
-      // Non-JSON error response
+      // Ignore stream reading errors
     }
 
-    throw new ApiError(errorMessage, res.status, fieldErrors);
+    throw new ApiError(errorMessage, res.status, fieldErrors, {
+      errorCode,
+      timestamp,
+    });
   }
 
   const data: InquiryResponse = await res.json();
@@ -456,16 +598,7 @@ export async function createInquiry(payload: InquiryRequestPayload): Promise<Inq
 }
 
 export function formatDateTime(isoString?: string | null): string {
-  if (!isoString) return '—';
-  const date = new Date(isoString);
-  if (Number.isNaN(date.getTime())) return isoString;
-  return new Intl.DateTimeFormat('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
+  return formatArgentinaDateTime(isoString);
 }
 
 async function parseBackendErrorResponse(
@@ -1055,5 +1188,70 @@ export async function deleteAdminCategory(
     method: 'DELETE',
   });
 }
+
+/**
+ * Fetches paginated orders for the admin panel: GET /api/admin/orders/paged
+ */
+export async function fetchAdminOrders(options?: {
+  status?: OrderStatus | '';
+  page?: number;
+  size?: number;
+  sort?: string;
+}): Promise<SpringPage<OrderResponse>> {
+  const baseUrl = getApiBaseUrl();
+  const url = new URL(`${baseUrl}/admin/orders/paged`);
+
+  if (options?.status) {
+    url.searchParams.set('status', options.status);
+  }
+  url.searchParams.set('page', String(options?.page ?? 0));
+  url.searchParams.set('size', String(options?.size ?? 12));
+  url.searchParams.set('sort', options?.sort || 'createdAt,desc');
+
+  return fetchAdminJson<SpringPage<OrderResponse>>(url.toString(), {
+    method: 'GET',
+    cache: 'no-store',
+  });
+}
+
+/**
+ * Fetches a single order detail by ID: GET /api/admin/orders/{id} (ROLE_ADMIN).
+ */
+export async function fetchAdminOrderById(
+  id: string | number
+): Promise<OrderResponse> {
+  return fetchAdminJson<OrderResponse>(`/admin/orders/${id}`, {
+    method: 'GET',
+    cache: 'no-store',
+  });
+}
+
+/**
+ * Fetches a single order by its unique orderNumber: GET /api/orders/{orderNumber}.
+ */
+export async function fetchAdminOrderByNumber(
+  orderNumber: string
+): Promise<OrderResponse> {
+  const encoded = encodeURIComponent(orderNumber.trim());
+  return fetchAdminJson<OrderResponse>(`/orders/${encoded}`, {
+    method: 'GET',
+    cache: 'no-store',
+  });
+}
+
+/**
+ * Updates an order status (COMPLETED or CANCELLED): PATCH /api/admin/orders/{id}/status (ROLE_ADMIN).
+ * Note: When status is set to CANCELLED, the backend automatically restores variant stock.
+ */
+export async function updateAdminOrderStatus(
+  id: string | number,
+  status: OrderStatus
+): Promise<OrderResponse> {
+  return fetchAdminJson<OrderResponse>(`/admin/orders/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
 
 

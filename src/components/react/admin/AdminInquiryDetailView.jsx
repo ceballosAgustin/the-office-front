@@ -6,8 +6,8 @@ import {
   updateAdminInquiryStatus,
   confirmAdminInquiry,
   formatPrice,
-  formatDateTime,
 } from '../../../services/api';
+import { formatArgentinaDateTime } from '../../../utils/date';
 
 const PLACEHOLDER_IMAGE =
   'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22400%22%20height%3D%22500%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23F2F2F0%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20dominant-baseline%3D%22middle%22%20text-anchor%3D%22middle%22%20font-family%3D%22sans-serif%22%20font-size%3D%2212%22%20fill%3D%22%231D110D80%22%3ESIN%20IMAGEN%3C%2Ftext%3E%3C%2Fsvg%3E';
@@ -27,6 +27,7 @@ export default function AdminInquiryDetailView({ inquiryId }) {
   const [confirmContactName, setConfirmContactName] = useState('');
   const [confirmContactPhone, setConfirmContactPhone] = useState('');
   const [confirmFormError, setConfirmFormError] = useState(null);
+  const [confirmFieldErrors, setConfirmFieldErrors] = useState({});
 
   // Operation feedback
   const [actionError, setActionError] = useState(null);
@@ -130,6 +131,7 @@ export default function AdminInquiryDetailView({ inquiryId }) {
   const openConfirmModal = () => {
     setActionError(null);
     setConfirmFormError(null);
+    setConfirmFieldErrors({});
     setConfirmContactName(
       inquiry?.contactName ? inquiry.contactName.trim() : ''
     );
@@ -140,25 +142,45 @@ export default function AdminInquiryDetailView({ inquiryId }) {
     e.preventDefault();
     if (!inquiry || isConfirmingSale) return;
 
+    setConfirmFormError(null);
+    setConfirmFieldErrors({});
+
     const trimmedName = confirmContactName.trim();
     const trimmedPhone = confirmContactPhone.trim();
 
     if (!trimmedName) {
-      setConfirmFormError(
-        'Ingresá el nombre de contacto del cliente para registrar el pedido.'
-      );
+      const msg =
+        'Ingresá el nombre de contacto del cliente para registrar el pedido.';
+      setConfirmFieldErrors({ contactName: msg });
+      setConfirmFormError(msg);
+      return;
+    }
+
+    if (trimmedName.length > 150) {
+      const msg =
+        'El nombre de contacto del cliente no puede superar los 150 caracteres.';
+      setConfirmFieldErrors({ contactName: msg });
+      setConfirmFormError(msg);
       return;
     }
 
     if (!trimmedPhone) {
-      setConfirmFormError(
-        'El teléfono de contacto es obligatorio para generar el pedido (Order).'
-      );
+      const msg =
+        'El teléfono de contacto es obligatorio para generar el pedido (Order).';
+      setConfirmFieldErrors({ contactPhone: msg });
+      setConfirmFormError(msg);
+      return;
+    }
+
+    if (trimmedPhone.length > 50) {
+      const msg =
+        'El teléfono de contacto no puede superar los 50 caracteres.';
+      setConfirmFieldErrors({ contactPhone: msg });
+      setConfirmFormError(msg);
       return;
     }
 
     setIsConfirmingSale(true);
-    setConfirmFormError(null);
     setActionError(null);
     setActionSuccess(null);
 
@@ -201,6 +223,9 @@ export default function AdminInquiryDetailView({ inquiryId }) {
       if (err?.status === 403) {
         window.location.replace('/admin/login?reason=forbidden');
         return;
+      }
+      if (err?.fieldErrors && typeof err.fieldErrors === 'object') {
+        setConfirmFieldErrors(err.fieldErrors);
       }
       setConfirmFormError(
         err?.message ||
@@ -327,8 +352,8 @@ export default function AdminInquiryDetailView({ inquiryId }) {
               </div>
               <p className="text-xs text-brand-dark/60">
                 Creada el{' '}
-                <strong className="font-medium text-brand-dark">
-                  {formatDateTime(inquiry.createdAt)}
+                <strong className="font-medium text-brand-dark tabular-nums">
+                  {formatArgentinaDateTime(inquiry.createdAt)}
                 </strong>{' '}
                 • ID interno: <span className="font-mono">#{inquiry.id}</span>
               </p>
@@ -381,15 +406,25 @@ export default function AdminInquiryDetailView({ inquiryId }) {
                         : 'Pedido registrado')}
                   </h2>
                 </div>
-                {createdOrder?.status ? (
-                  <span className="px-2.5 py-1 text-[11px] font-mono font-semibold uppercase tracking-wider bg-emerald-800 text-white rounded-xs">
-                    Estado: {createdOrder.status}
-                  </span>
-                ) : inquiry.orderId != null ? (
-                  <span className="px-2.5 py-1 text-[11px] font-mono font-semibold uppercase tracking-wider bg-emerald-800/15 text-emerald-900 rounded-xs">
-                    ID Pedido: #{inquiry.orderId}
-                  </span>
-                ) : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  {createdOrder?.status ? (
+                    <span className="px-2.5 py-1 text-[11px] font-mono font-semibold uppercase tracking-wider bg-emerald-800 text-white rounded-xs">
+                      Estado: {createdOrder.status}
+                    </span>
+                  ) : inquiry.orderId != null ? (
+                    <span className="px-2.5 py-1 text-[11px] font-mono font-semibold uppercase tracking-wider bg-emerald-800/15 text-emerald-900 rounded-xs">
+                      ID Pedido: #{inquiry.orderId}
+                    </span>
+                  ) : null}
+                  {(createdOrder?.id || inquiry.orderId != null) && (
+                    <a
+                      href={`/admin/orders/detail?id=${createdOrder?.id ?? inquiry.orderId}`}
+                      className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] hover:opacity-90 rounded-xs transition-opacity"
+                    >
+                      Ver pedido →
+                    </a>
+                  )}
+                </div>
               </div>
 
               {createdOrder && (
@@ -774,7 +809,11 @@ export default function AdminInquiryDetailView({ inquiryId }) {
             )}
 
             {/* Contact Form for Order Creation */}
-            <form onSubmit={handleConfirmSaleSubmit} className="space-y-4">
+            <form
+              onSubmit={handleConfirmSaleSubmit}
+              className="space-y-4"
+              noValidate
+            >
               <div className="space-y-1.5">
                 <label
                   htmlFor="confirm-contact-name"
@@ -787,11 +826,31 @@ export default function AdminInquiryDetailView({ inquiryId }) {
                   type="text"
                   maxLength={150}
                   required
+                  disabled={isConfirmingSale}
                   value={confirmContactName}
-                  onChange={(e) => setConfirmContactName(e.target.value)}
+                  onChange={(e) => {
+                    setConfirmContactName(e.target.value);
+                    if (confirmFieldErrors.contactName) {
+                      setConfirmFieldErrors((prev) => ({
+                        ...prev,
+                        contactName: undefined,
+                      }));
+                      setConfirmFormError(null);
+                    }
+                  }}
                   placeholder="Ej. Juan Pérez"
-                  className="w-full h-10 px-3 text-xs sm:text-sm text-brand-dark bg-white border border-brand-dark/20 rounded-xs focus:outline-none focus:border-brand-dark focus:ring-1 focus:ring-brand-dark"
+                  aria-invalid={
+                    confirmFieldErrors.contactName ? 'true' : undefined
+                  }
+                  className={`form-input w-full h-10 px-3 text-base sm:text-sm ${
+                    confirmFieldErrors.contactName ? 'form-input-error' : ''
+                  }`}
                 />
+                {confirmFieldErrors.contactName && (
+                  <p className="text-xs text-red-600">
+                    {confirmFieldErrors.contactName}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -807,11 +866,31 @@ export default function AdminInquiryDetailView({ inquiryId }) {
                   type="tel"
                   maxLength={50}
                   required
+                  disabled={isConfirmingSale}
                   value={confirmContactPhone}
-                  onChange={(e) => setConfirmContactPhone(e.target.value)}
+                  onChange={(e) => {
+                    setConfirmContactPhone(e.target.value);
+                    if (confirmFieldErrors.contactPhone) {
+                      setConfirmFieldErrors((prev) => ({
+                        ...prev,
+                        contactPhone: undefined,
+                      }));
+                      setConfirmFormError(null);
+                    }
+                  }}
                   placeholder="Ej. 1122334455"
-                  className="w-full h-10 px-3 text-xs sm:text-sm text-brand-dark bg-white border border-brand-dark/20 rounded-xs focus:outline-none focus:border-brand-dark focus:ring-1 focus:ring-brand-dark"
+                  aria-invalid={
+                    confirmFieldErrors.contactPhone ? 'true' : undefined
+                  }
+                  className={`form-input w-full h-10 px-3 text-base sm:text-sm ${
+                    confirmFieldErrors.contactPhone ? 'form-input-error' : ''
+                  }`}
                 />
+                {confirmFieldErrors.contactPhone && (
+                  <p className="text-xs text-red-600">
+                    {confirmFieldErrors.contactPhone}
+                  </p>
+                )}
               </div>
 
               <p className="text-[11px] text-brand-dark/55 leading-relaxed">
