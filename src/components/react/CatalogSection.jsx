@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { fetchProducts, fetchCategories } from '../../services/api';
+import { fetchProducts, fetchCategories, fetchBrands } from '../../services/api';
 
 function parseCatalogParams() {
   if (typeof window === 'undefined') {
-    return { categoryId: null, search: '' };
+    return { categoryId: null, search: '', brand: '' };
   }
   const params = new URLSearchParams(window.location.search);
   const rawCat = params.get('categoryId');
@@ -12,17 +12,22 @@ function parseCatalogParams() {
       ? Number(rawCat)
       : null;
   const search = params.get('search')?.trim() || '';
-  return { categoryId, search };
+  const brand = params.get('brand')?.trim().toLowerCase() || '';
+  return { categoryId, search, brand };
 }
 
 export default function CatalogSection() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [brands, setBrands] = useState([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState(
     () => parseCatalogParams().categoryId
   );
   const [searchQuery, setSearchQuery] = useState(
     () => parseCatalogParams().search
+  );
+  const [selectedBrand, setSelectedBrand] = useState(
+    () => parseCatalogParams().brand
   );
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -30,7 +35,8 @@ export default function CatalogSection() {
 
   const loadData = async (
     catId = selectedCategoryId,
-    currentSearch = searchQuery
+    currentSearch = searchQuery,
+    currentBrand = selectedBrand
   ) => {
     requestIdRef.current += 1;
     const reqId = requestIdRef.current;
@@ -38,12 +44,14 @@ export default function CatalogSection() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [fetchedProducts, fetchedCategories] = await Promise.all([
+      const [fetchedProducts, fetchedCategories, fetchedBrands] = await Promise.all([
         fetchProducts({
           categoryId: catId,
+          brand: currentBrand ? currentBrand.trim() : undefined,
           search: currentSearch ? currentSearch.trim() : undefined,
         }),
         fetchCategories(),
+        fetchBrands().catch(() => []),
       ]);
 
       if (reqId !== requestIdRef.current) return;
@@ -51,6 +59,9 @@ export default function CatalogSection() {
       setProducts(fetchedProducts);
       if (fetchedCategories && fetchedCategories.length > 0) {
         setCategories(fetchedCategories);
+      }
+      if (fetchedBrands && fetchedBrands.length > 0) {
+        setBrands(fetchedBrands);
       }
     } catch (err) {
       if (reqId !== requestIdRef.current) return;
@@ -66,9 +77,10 @@ export default function CatalogSection() {
 
   useEffect(() => {
     const syncFromUrl = () => {
-      const { categoryId, search } = parseCatalogParams();
+      const { categoryId, search, brand } = parseCatalogParams();
       setSelectedCategoryId(categoryId);
       setSearchQuery(search);
+      setSelectedBrand(brand);
     };
 
     syncFromUrl();
@@ -81,10 +93,10 @@ export default function CatalogSection() {
   }, []);
 
   useEffect(() => {
-    loadData(selectedCategoryId, searchQuery);
-  }, [selectedCategoryId, searchQuery]);
+    loadData(selectedCategoryId, searchQuery, selectedBrand);
+  }, [selectedCategoryId, searchQuery, selectedBrand]);
 
-  const updateCatalogUrl = (nextCategoryId, nextSearch, usePush = false) => {
+  const updateCatalogUrl = (nextCategoryId, nextSearch, nextBrand, usePush = false) => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
     if (nextCategoryId !== null && nextCategoryId !== undefined) {
@@ -99,6 +111,12 @@ export default function CatalogSection() {
       url.searchParams.delete('search');
     }
 
+    if (nextBrand && nextBrand.trim()) {
+      url.searchParams.set('brand', nextBrand.trim().toLowerCase());
+    } else {
+      url.searchParams.delete('brand');
+    }
+
     const nextUrlStr = `${url.pathname}${url.search}${url.hash}`;
     if (usePush) {
       window.history.pushState({}, '', nextUrlStr);
@@ -109,12 +127,20 @@ export default function CatalogSection() {
 
   const handleCategorySelect = (catId) => {
     setSelectedCategoryId(catId);
-    updateCatalogUrl(catId, searchQuery, false);
+    updateCatalogUrl(catId, searchQuery, selectedBrand, false);
   };
 
   const handleClearSearch = () => {
     setSearchQuery('');
-    updateCatalogUrl(selectedCategoryId, '', true);
+    updateCatalogUrl(selectedCategoryId, '', selectedBrand, true);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('the-office:catalog-url-change'));
+    }
+  };
+
+  const handleClearBrand = () => {
+    setSelectedBrand('');
+    updateCatalogUrl(selectedCategoryId, searchQuery, '', true);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('the-office:catalog-url-change'));
     }
@@ -123,7 +149,8 @@ export default function CatalogSection() {
   const handleResetAllFilters = () => {
     setSelectedCategoryId(null);
     setSearchQuery('');
-    updateCatalogUrl(null, '', true);
+    setSelectedBrand('');
+    updateCatalogUrl(null, '', '', true);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('the-office:catalog-url-change'));
     }
@@ -133,6 +160,9 @@ export default function CatalogSection() {
     const params = new URLSearchParams();
     if (selectedCategoryId !== null && selectedCategoryId !== undefined) {
       params.set('categoryId', String(selectedCategoryId));
+    }
+    if (selectedBrand && selectedBrand.trim()) {
+      params.set('brand', selectedBrand.trim().toLowerCase());
     }
     if (searchQuery && searchQuery.trim()) {
       params.set('search', searchQuery.trim());
@@ -144,6 +174,12 @@ export default function CatalogSection() {
   const activeCategoryName =
     selectedCategoryId !== null
       ? categories.find((c) => c.id === selectedCategoryId)?.name || null
+      : null;
+
+  const activeBrandName =
+    selectedBrand && selectedBrand.trim()
+      ? brands.find((b) => b.slug?.toLowerCase() === selectedBrand.toLowerCase())?.name ||
+      selectedBrand.charAt(0).toUpperCase() + selectedBrand.slice(1)
       : null;
 
   return (
@@ -168,11 +204,10 @@ export default function CatalogSection() {
           <button
             type="button"
             onClick={() => handleCategorySelect(null)}
-            className={`transition-colors cursor-pointer pb-0.5 whitespace-nowrap ${
-              selectedCategoryId === null
+            className={`transition-colors cursor-pointer pb-0.5 whitespace-nowrap ${selectedCategoryId === null
                 ? 'text-brand-dark font-semibold border-b border-brand-dark'
                 : 'hover:text-brand-dark'
-            }`}
+              }`}
           >
             Shop All
           </button>
@@ -181,11 +216,10 @@ export default function CatalogSection() {
               key={cat.id}
               type="button"
               onClick={() => handleCategorySelect(cat.id)}
-              className={`transition-colors cursor-pointer pb-0.5 whitespace-nowrap ${
-                selectedCategoryId === cat.id
+              className={`transition-colors cursor-pointer pb-0.5 whitespace-nowrap ${selectedCategoryId === cat.id
                   ? 'text-brand-dark font-semibold border-b border-brand-dark'
                   : 'hover:text-brand-dark'
-              }`}
+                }`}
             >
               {cat.name}
             </button>
@@ -193,33 +227,72 @@ export default function CatalogSection() {
         </div>
       </div>
 
-      {/* Active Search Filter Banner */}
-      {searchQuery && (
+      {/* Active Search, Brand & Category Filter Banners */}
+      {(searchQuery || selectedBrand || selectedCategoryId !== null) && (
         <div
           className="flex flex-wrap items-center justify-between gap-3 mb-6 sm:mb-8 px-3.5 py-2.5 bg-brand-dark/[0.03] border border-brand-dark/12 rounded-xs"
           aria-live="polite"
         >
-          <div className="flex items-center flex-wrap gap-1.5 text-xs text-brand-dark/75">
-            <span>Resultados de búsqueda para</span>
-            <span className="font-semibold text-brand-dark">
-              «{searchQuery}»
-            </span>
+          <div className="flex items-center flex-wrap gap-2 text-xs text-brand-dark/75">
+            {searchQuery && (
+              <span className="inline-flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xs border border-brand-dark/10">
+                <span>Búsqueda:</span>
+                <strong className="text-brand-dark font-medium">«{searchQuery}»</strong>
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  aria-label="Quitar filtro de búsqueda"
+                  className="ml-1 text-brand-dark/40 hover:text-brand-dark font-bold cursor-pointer"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+
+            {selectedBrand && (
+              <span className="inline-flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xs border border-brand-dark/10">
+                <span>Marca:</span>
+                <strong className="text-brand-dark font-medium">{activeBrandName}</strong>
+                <button
+                  type="button"
+                  onClick={handleClearBrand}
+                  aria-label="Quitar filtro de marca"
+                  className="ml-1 text-brand-dark/40 hover:text-brand-dark font-bold cursor-pointer"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+
             {activeCategoryName && (
-              <span className="text-brand-dark/55">
-                en <strong className="font-medium text-brand-dark">{activeCategoryName}</strong>
+              <span className="inline-flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xs border border-brand-dark/10">
+                <span>Categoría:</span>
+                <strong className="text-brand-dark font-medium">{activeCategoryName}</strong>
+                <button
+                  type="button"
+                  onClick={() => handleCategorySelect(null)}
+                  aria-label="Quitar filtro de categoría"
+                  className="ml-1 text-brand-dark/40 hover:text-brand-dark font-bold cursor-pointer"
+                >
+                  ×
+                </button>
               </span>
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={handleClearSearch}
-            aria-label="Limpiar búsqueda y volver al catálogo"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand-dark hover:bg-brand-dark hover:text-[#FAFAFA] border border-brand-dark/20 rounded-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 cursor-pointer"
-          >
-            <span>Limpiar búsqueda</span>
-            <span aria-hidden="true">×</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {(searchQuery || selectedBrand || selectedCategoryId !== null) && (
+              <button
+                type="button"
+                onClick={handleResetAllFilters}
+                aria-label="Limpiar todos los filtros"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand-dark hover:bg-brand-dark hover:text-[#FAFAFA] border border-brand-dark/20 rounded-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 cursor-pointer"
+              >
+                <span>Limpiar filtros</span>
+                <span aria-hidden="true">×</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -286,9 +359,8 @@ export default function CatalogSection() {
         <div className="py-16 sm:py-24 text-center space-y-3">
           <p className="text-sm font-medium text-brand-dark/65">
             {searchQuery
-              ? `No se encontraron productos que coincidan con «${searchQuery}»${
-                  activeCategoryName ? ` en ${activeCategoryName}` : ''
-                }.`
+              ? `No se encontraron productos que coincidan con «${searchQuery}»${activeCategoryName ? ` en ${activeCategoryName}` : ''
+              }.`
               : 'No hay productos disponibles en esta selección.'}
           </p>
           <div className="flex items-center justify-center flex-wrap gap-4 pt-1">
@@ -322,9 +394,8 @@ export default function CatalogSection() {
               <a
                 href={buildProductDetailHref(product.id)}
                 className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/20 rounded-xs"
-                aria-label={`${product.title}${
-                  product.category ? ' — ' + product.category : ''
-                }, ${product.formattedPrice}`}
+                aria-label={`${product.title}${product.category ? ' — ' + product.category : ''
+                  }, ${product.formattedPrice}`}
               >
                 {/* Image Canvas (4:5 ratio, neutral light background) */}
                 <div className="aspect-[4/5] w-full overflow-hidden bg-[#F2F2F0] relative">

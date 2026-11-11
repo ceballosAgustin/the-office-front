@@ -9,6 +9,9 @@ export interface Product {
   title: string;
   category: 'Tops' | 'Bottoms' | 'Sneakers' | 'Accessories';
   price: number;
+  brandId?: number;
+  brandName?: string;
+  brandSlug?: string;
   image: string;
   images: string[];
   description: string;

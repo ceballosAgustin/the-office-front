@@ -41,6 +41,15 @@ export interface BackendVariant {
   isActive?: boolean;
 }
 
+export interface BackendBrand {
+  id: number;
+  name: string;
+  slug: string;
+  isActive?: boolean;
+}
+
+export type Brand = BackendBrand;
+
 export interface BackendProduct {
   id: number;
   title: string;
@@ -54,6 +63,9 @@ export interface BackendProduct {
   categoryId?: number | null;
   categoryName?: string | null;
   categorySlug?: string | null;
+  brandId?: number | null;
+  brandName?: string | null;
+  brandSlug?: string | null;
   images?: BackendProductImage[];
   variants?: BackendVariant[];
 }
@@ -70,6 +82,7 @@ export interface AdminProductRequestPayload {
   description?: string;
   price: number;
   categoryId: number;
+  brandId?: number | null;
   variants?: AdminProductVariantPayload[];
 }
 
@@ -82,6 +95,92 @@ export interface BackendCategory {
 export interface AdminCategoryRequestPayload {
   name: string;
   slug?: string;
+}
+
+export interface AdminBrandRequestPayload {
+  name: string;
+  slug?: string;
+  isActive?: boolean;
+}
+
+export type NavTargetType = 'BRAND' | 'CATEGORY' | 'CUSTOM_LINK';
+
+export interface NavSectionRequest {
+  code?: string;
+  label: string;
+  orderIndex?: number;
+  isVisible?: boolean;
+}
+
+export interface NavItemRequest {
+  targetType: NavTargetType;
+  brandId?: number | null;
+  categoryId?: number | null;
+  customUrl?: string | null;
+  label?: string | null;
+  columnIndex: number;
+  orderIndex?: number;
+  isVisible?: boolean;
+}
+
+export interface NavItemResponse {
+  id: number;
+  sectionId: number;
+  targetType: NavTargetType;
+  label?: string | null;
+  columnIndex: number;
+  orderIndex: number;
+  isVisible: boolean;
+  brandId?: number | null;
+  brandName?: string | null;
+  brandSlug?: string | null;
+  brandIsActive?: boolean;
+  categoryId?: number | null;
+  categoryName?: string | null;
+  categorySlug?: string | null;
+  customUrl?: string | null;
+}
+
+export interface NavSectionResponse {
+  id: number;
+  code: string;
+  label: string;
+  orderIndex: number;
+  isVisible: boolean;
+  items: NavItemResponse[];
+}
+
+export interface PublicNavigationItemResponse {
+  id: number;
+  label: string;
+  targetType: NavTargetType;
+  orderIndex: number;
+  brandId?: number | null;
+  brandName?: string | null;
+  brandSlug?: string | null;
+  categoryId?: number | null;
+  categoryName?: string | null;
+  categorySlug?: string | null;
+  customUrl?: string | null;
+}
+
+export interface PublicNavigationColumnResponse {
+  columnIndex: number;
+  items: PublicNavigationItemResponse[];
+}
+
+export interface PublicNavigationSectionResponse {
+  id: number;
+  code: string;
+  label: string;
+  orderIndex: number;
+  columns: PublicNavigationColumnResponse[];
+}
+
+export interface OrderItemPosition {
+  id: number;
+  columnIndex: number;
+  orderIndex: number;
 }
 
 export interface SpringPage<T> {
@@ -109,6 +208,9 @@ export interface Product {
   category: string;
   categoryId?: number;
   categorySlug?: string;
+  brandId?: number;
+  brandName?: string;
+  brandSlug?: string;
   image: string;
   images: string[];
   availableSizes: string[];
@@ -310,21 +412,24 @@ export function mapBackendProduct(raw: BackendProduct): Product {
     formattedPrice,
     ...(hasDiscount
       ? {
-          previousPrice: rawPrevPrice,
-          formattedPreviousPrice: formatPrice(rawPrevPrice),
-        }
+        previousPrice: rawPrevPrice,
+        formattedPreviousPrice: formatPrice(rawPrevPrice),
+      }
       : {}),
     ...(hasVariantPriceRange
       ? {
-          minPrice: minVariantPrice,
-          maxPrice: maxVariantPrice,
-          hasVariantPriceRange: true,
-        }
+        minPrice: minVariantPrice,
+        maxPrice: maxVariantPrice,
+        hasVariantPriceRange: true,
+      }
       : {}),
     description: raw.description || '',
     category: raw.categoryName || 'General',
     categoryId: raw.categoryId ?? undefined,
     categorySlug: raw.categorySlug ?? undefined,
+    brandId: raw.brandId ?? undefined,
+    brandName: raw.brandName || undefined,
+    brandSlug: raw.brandSlug || undefined,
     image: primaryImage,
     images: sortedImages,
     availableSizes,
@@ -333,10 +438,11 @@ export function mapBackendProduct(raw: BackendProduct): Product {
 }
 
 /**
- * Fetch all active products from backend with optional category filtering and pagination.
+ * Fetch all active products from backend with optional category, brand filtering and pagination.
  */
 export async function fetchProducts(options?: {
   categoryId?: number | null;
+  brand?: string | null;
   page?: number;
   size?: number;
   search?: string;
@@ -349,6 +455,9 @@ export async function fetchProducts(options?: {
 
   if (options?.categoryId) {
     url.searchParams.set('categoryId', String(options.categoryId));
+  }
+  if (options?.brand && options.brand.trim()) {
+    url.searchParams.set('brand', options.brand.trim());
   }
   if (options?.search) {
     url.searchParams.set('title', options.search);
@@ -456,6 +565,61 @@ export async function fetchCategories(): Promise<BackendCategory[]> {
   } catch {
     // Categories are optional enhancement for catalog filters; return empty on failure
     return [];
+  }
+}
+
+/**
+ * Fetch active brands from backend with at least one active product associated.
+ */
+export async function fetchBrands(): Promise<Brand[]> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/brands`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    if (!res.ok) {
+      return [];
+    }
+
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    // Graceful fallback for offline dev or build without live backend
+    return [];
+  }
+}
+
+/**
+ * Fetch single brand details by slug.
+ */
+export async function fetchBrandBySlug(slug: string): Promise<Brand | null> {
+  if (!slug || !slug.trim()) return null;
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/brands/${encodeURIComponent(slug.trim())}`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    if (!res.ok) {
+      return null;
+    }
+
+    return await res.json();
+  } catch {
+    return null;
   }
 }
 
@@ -948,6 +1112,7 @@ export async function createAdminProduct(
     description: payload.description ? payload.description.trim() : '',
     price: Number(payload.price),
     categoryId: Number(payload.categoryId),
+    brandId: payload.brandId !== undefined ? (payload.brandId != null ? Number(payload.brandId) : null) : undefined,
   };
 
   if (Array.isArray(payload.variants)) {
@@ -990,6 +1155,7 @@ export async function updateAdminProduct(
     description: payload.description ? payload.description.trim() : '',
     price: Number(payload.price),
     categoryId: Number(payload.categoryId),
+    brandId: payload.brandId !== undefined ? (payload.brandId != null ? Number(payload.brandId) : null) : undefined,
   };
 
   if (Array.isArray(payload.variants)) {
@@ -1190,6 +1356,112 @@ export async function deleteAdminCategory(
 }
 
 /**
+ * Generates a slug preview matching backend BrandService.normalizeSlug rules:
+ * strips accents/diacritics, lowercases, replaces non-alphanumeric sequences with '-', and trims leading/trailing '-'.
+ */
+export function suggestBrandSlug(input?: string | null): string {
+  if (!input || typeof input !== 'string') return '';
+  return input
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 100);
+}
+
+/**
+ * Fetches all brands for the admin panel from GET /api/admin/brands (ROLE_ADMIN).
+ * Returns all brands (active and inactive) sorted alphabetically.
+ */
+export async function fetchAdminBrands(): Promise<BackendBrand[]> {
+  const data = await fetchAdminJson<BackendBrand[]>('/admin/brands');
+  return Array.isArray(data) ? data : [];
+}
+
+/**
+ * Fetches single brand details by ID: GET /api/admin/brands/{id} (ROLE_ADMIN).
+ */
+export async function fetchAdminBrandById(
+  id: string | number
+): Promise<BackendBrand> {
+  return fetchAdminJson<BackendBrand>(`/admin/brands/${id}`);
+}
+
+/**
+ * Creates a new brand via POST /api/admin/brands (ROLE_ADMIN).
+ */
+export async function createAdminBrand(
+  payload: AdminBrandRequestPayload
+): Promise<BackendBrand> {
+  const body: Record<string, unknown> = {
+    name: (payload.name || '').trim(),
+  };
+
+  if (payload.slug !== undefined && payload.slug.trim().length > 0) {
+    body.slug = payload.slug.trim();
+  }
+  if (typeof payload.isActive === 'boolean') {
+    body.isActive = payload.isActive;
+  }
+
+  return fetchAdminJson<BackendBrand>('/admin/brands', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Updates an existing brand via PUT /api/admin/brands/{id} (ROLE_ADMIN).
+ */
+export async function updateAdminBrand(
+  id: string | number,
+  payload: AdminBrandRequestPayload
+): Promise<BackendBrand> {
+  const body: Record<string, unknown> = {
+    name: (payload.name || '').trim(),
+  };
+
+  if (payload.slug !== undefined && payload.slug.trim().length > 0) {
+    body.slug = payload.slug.trim();
+  }
+  if (typeof payload.isActive === 'boolean') {
+    body.isActive = payload.isActive;
+  }
+
+  return fetchAdminJson<BackendBrand>(`/admin/brands/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Updates brand status (active/inactive) via PATCH /api/admin/brands/{id}/status (ROLE_ADMIN).
+ */
+export async function updateAdminBrandStatus(
+  id: string | number,
+  isActive: boolean
+): Promise<BackendBrand> {
+  return fetchAdminJson<BackendBrand>(`/admin/brands/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isActive: Boolean(isActive) }),
+  });
+}
+
+/**
+ * Deletes a brand via DELETE /api/admin/brands/{id} (ROLE_ADMIN).
+ * Throws ApiError with status 409 if the brand has associated products.
+ */
+export async function deleteAdminBrand(
+  id: string | number
+): Promise<{ message: string }> {
+  return fetchAdminJson<{ message: string }>(`/admin/brands/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
  * Fetches paginated orders for the admin panel: GET /api/admin/orders/paged
  */
 export async function fetchAdminOrders(options?: {
@@ -1251,6 +1523,442 @@ export async function updateAdminOrderStatus(
     method: 'PATCH',
     body: JSON.stringify({ status }),
   });
+}
+
+// =========================================================================
+// NAVIGATION (NAVBAR & MEGAMENU) UTILITIES & ENDPOINTS
+// =========================================================================
+
+/**
+ * Resolves the public destination URL for a navigation item.
+ */
+export function getNavigationItemHref(item?: {
+  targetType?: NavTargetType | string | null;
+  brandSlug?: string | null;
+  categoryId?: number | string | null;
+  customUrl?: string | null;
+} | null): string {
+  if (!item || !item.targetType) return '/#catalogo';
+
+  switch (item.targetType) {
+    case 'BRAND':
+      return item.brandSlug
+        ? `/?brand=${encodeURIComponent(item.brandSlug)}#catalogo`
+        : '/#catalogo';
+    case 'CATEGORY':
+      return item.categoryId != null && String(item.categoryId).trim().length > 0
+        ? `/?categoryId=${encodeURIComponent(String(item.categoryId))}#catalogo`
+        : '/#catalogo';
+    case 'CUSTOM_LINK': {
+      const url = item.customUrl ? item.customUrl.trim() : '';
+      if (!url) return '/#catalogo';
+      const lower = url.toLowerCase();
+
+      // Block dangerous protocols, relative protocol (//) and insecure HTTP
+      if (
+        lower.startsWith('javascript:') ||
+        lower.startsWith('data:') ||
+        lower.startsWith('vbscript:') ||
+        lower.startsWith('file:') ||
+        url.startsWith('//') ||
+        lower.startsWith('http://')
+      ) {
+        return '/#catalogo';
+      }
+
+      // Valid internal relative path
+      if (url.startsWith('/')) {
+        return url;
+      }
+
+      // Valid external HTTPS URL
+      if (isExternalCustomUrl(url)) {
+        return url;
+      }
+
+      return '/#catalogo';
+    }
+    default:
+      return '/#catalogo';
+  }
+}
+
+/**
+ * Determines whether a custom URL is a valid external HTTPS destination.
+ * Only 'https://' URLs are accepted; 'http://', protocol-relative ('//'),
+ * and pseudo-protocols (javascript:, data:, etc.) are rejected.
+ */
+export function isExternalCustomUrl(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  const lower = trimmed.toLowerCase();
+
+  // Reject insecure HTTP, protocol-relative, and dangerous protocols
+  if (
+    lower.startsWith('http://') ||
+    trimmed.startsWith('//') ||
+    lower.startsWith('javascript:') ||
+    lower.startsWith('data:') ||
+    lower.startsWith('vbscript:') ||
+    lower.startsWith('file:')
+  ) {
+    return false;
+  }
+
+  if (lower.startsWith('https://')) {
+    try {
+      const parsed = new URL(trimmed);
+      return parsed.protocol === 'https:' && Boolean(parsed.hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Determines whether a URL is an internal catalog navigation target.
+ * Catalog targets are located on the root path '/' and contain '#catalogo'
+ * or catalog query parameters ('brand', 'categoryId', 'search').
+ */
+export function isCatalogHref(href?: string | null): boolean {
+  if (!href || typeof href !== 'string') return false;
+  const trimmed = href.trim();
+  if (
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('//') ||
+    trimmed.startsWith('javascript:') ||
+    trimmed.startsWith('data:')
+  ) {
+    return false;
+  }
+  if (!trimmed.startsWith('/') && !trimmed.startsWith('#')) {
+    return false;
+  }
+
+  try {
+    const dummyBase = 'http://theofficeba.local';
+    const parsed = new URL(trimmed, dummyBase);
+    if (parsed.pathname !== '/') {
+      return false;
+    }
+    const hasCatalogHash = parsed.hash.toLowerCase() === '#catalogo';
+    const hasCatalogParams =
+      parsed.searchParams.has('brand') ||
+      parsed.searchParams.has('categoryId') ||
+      parsed.searchParams.has('search');
+
+    return hasCatalogHash || hasCatalogParams;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validates a custom URL format for CUSTOM_LINK nav items.
+ * Rules:
+ * - Internal routes must start with '/' but not '//'.
+ * - External URLs must start with 'https://' with a valid hostname.
+ * - Rejects insecure HTTP and dangerous protocols (javascript:, data:, vbscript:, file:).
+ */
+export function validateCustomUrl(url?: string | null): { valid: boolean; error?: string } {
+  if (!url || !url.trim()) {
+    return { valid: false, error: 'La URL personalizada es obligatoria.' };
+  }
+  const trimmed = url.trim();
+  if (trimmed.length > 500) {
+    return { valid: false, error: 'La URL personalizada no puede superar los 500 caracteres.' };
+  }
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith('javascript:') ||
+    lower.startsWith('data:') ||
+    lower.startsWith('vbscript:') ||
+    lower.startsWith('file:')
+  ) {
+    return { valid: false, error: 'Protocolo no permitido por razones de seguridad.' };
+  }
+  if (trimmed.startsWith('//')) {
+    return { valid: false, error: 'No se permiten URLs relativas al protocolo (//).' };
+  }
+  if (lower.startsWith('http://')) {
+    return {
+      valid: false,
+      error: 'No se admiten enlaces no seguros (HTTP). Por seguridad, utilizá exclusivamente HTTPS (https://...).',
+    };
+  }
+  if (trimmed.startsWith('/')) {
+    return { valid: true };
+  }
+  if (lower.startsWith('https://')) {
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol === 'https:' && parsed.hostname) {
+        return { valid: true };
+      }
+      return { valid: false, error: 'La URL https:// ingresada no tiene un host válido.' };
+    } catch {
+      return { valid: false, error: 'La URL https:// ingresada no tiene un formato válido.' };
+    }
+  }
+  return {
+    valid: false,
+    error: 'Las URLs externas deben comenzar con https:// y las rutas internas con /.',
+  };
+}
+
+/**
+ * Fetches the public dynamic navigation tree: GET /api/navigation
+ * Returns visible sections and items with valid resolved destinations.
+ */
+export async function fetchPublicNavigation(): Promise<PublicNavigationSectionResponse[]> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/navigation`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    if (!res.ok) {
+      return [];
+    }
+
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    // Graceful fallback during offline build or connection error
+    return [];
+  }
+}
+
+/**
+ * Fetches the complete admin navigation tree including hidden sections and items: GET /api/admin/navigation (ROLE_ADMIN)
+ */
+export async function fetchAdminNavigationSections(): Promise<NavSectionResponse[]> {
+  const data = await fetchAdminJson<NavSectionResponse[]>('/admin/navigation', {
+    method: 'GET',
+    cache: 'no-store',
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+/**
+ * Fetches a single navigation section by ID: GET /api/admin/navigation/sections/{id} (ROLE_ADMIN)
+ */
+export async function fetchAdminNavigationSectionById(
+  id: string | number
+): Promise<NavSectionResponse> {
+  return fetchAdminJson<NavSectionResponse>(`/admin/navigation/sections/${id}`, {
+    method: 'GET',
+    cache: 'no-store',
+  });
+}
+
+/**
+ * Creates a new navigation section: POST /api/admin/navigation/sections (ROLE_ADMIN)
+ */
+export async function createAdminNavigationSection(
+  payload: NavSectionRequest
+): Promise<NavSectionResponse> {
+  const body: Record<string, unknown> = {
+    label: (payload.label || '').trim(),
+  };
+  if (payload.code !== undefined && payload.code.trim().length > 0) {
+    body.code = payload.code.trim();
+  }
+  if (typeof payload.orderIndex === 'number') {
+    body.orderIndex = payload.orderIndex;
+  }
+  if (typeof payload.isVisible === 'boolean') {
+    body.isVisible = payload.isVisible;
+  }
+
+  return fetchAdminJson<NavSectionResponse>('/admin/navigation/sections', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Updates an existing navigation section: PUT /api/admin/navigation/sections/{id} (ROLE_ADMIN)
+ */
+export async function updateAdminNavigationSection(
+  id: string | number,
+  payload: NavSectionRequest
+): Promise<NavSectionResponse> {
+  const body: Record<string, unknown> = {
+    label: (payload.label || '').trim(),
+  };
+  if (typeof payload.orderIndex === 'number') {
+    body.orderIndex = payload.orderIndex;
+  }
+  if (typeof payload.isVisible === 'boolean') {
+    body.isVisible = payload.isVisible;
+  }
+
+  return fetchAdminJson<NavSectionResponse>(`/admin/navigation/sections/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Updates the visibility status of a navigation section: PATCH /api/admin/navigation/sections/{id}/status (ROLE_ADMIN)
+ */
+export async function updateAdminNavigationSectionStatus(
+  id: string | number,
+  isVisible: boolean
+): Promise<NavSectionResponse> {
+  return fetchAdminJson<NavSectionResponse>(`/admin/navigation/sections/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isVisible: Boolean(isVisible) }),
+  });
+}
+
+/**
+ * Deletes a navigation section and its nav items in cascade: DELETE /api/admin/navigation/sections/{id} (ROLE_ADMIN)
+ * Note: Never deletes brands, categories, or products.
+ */
+export async function deleteAdminNavigationSection(
+  id: string | number
+): Promise<{ message: string }> {
+  return fetchAdminJson<{ message: string }>(`/admin/navigation/sections/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Reorders navigation sections: PATCH /api/admin/navigation/sections/order (ROLE_ADMIN)
+ */
+export async function reorderAdminNavigationSections(
+  sectionIds: (number | string)[]
+): Promise<NavSectionResponse[]> {
+  return fetchAdminJson<NavSectionResponse[]>('/admin/navigation/sections/order', {
+    method: 'PATCH',
+    body: JSON.stringify({ sectionIds: sectionIds.map(Number) }),
+  });
+}
+
+/**
+ * Adds an item to a navigation section: POST /api/admin/navigation/sections/{sectionId}/items (ROLE_ADMIN)
+ */
+export async function createAdminNavigationItem(
+  sectionId: string | number,
+  payload: NavItemRequest
+): Promise<NavItemResponse> {
+  const body: Record<string, unknown> = {
+    targetType: payload.targetType,
+    columnIndex: Number(payload.columnIndex),
+  };
+
+  if (payload.brandId !== undefined && payload.brandId !== null) {
+    body.brandId = Number(payload.brandId);
+  }
+  if (payload.categoryId !== undefined && payload.categoryId !== null) {
+    body.categoryId = Number(payload.categoryId);
+  }
+  if (payload.customUrl !== undefined && payload.customUrl !== null && payload.customUrl.trim().length > 0) {
+    body.customUrl = payload.customUrl.trim();
+  }
+  if (payload.label !== undefined && payload.label !== null && payload.label.trim().length > 0) {
+    body.label = payload.label.trim();
+  }
+  if (typeof payload.orderIndex === 'number') {
+    body.orderIndex = payload.orderIndex;
+  }
+  if (typeof payload.isVisible === 'boolean') {
+    body.isVisible = payload.isVisible;
+  }
+
+  return fetchAdminJson<NavItemResponse>(`/admin/navigation/sections/${sectionId}/items`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Updates an existing navigation item: PUT /api/admin/navigation/items/{id} (ROLE_ADMIN)
+ */
+export async function updateAdminNavigationItem(
+  id: string | number,
+  payload: NavItemRequest
+): Promise<NavItemResponse> {
+  const body: Record<string, unknown> = {
+    targetType: payload.targetType,
+    columnIndex: Number(payload.columnIndex),
+  };
+
+  if (payload.brandId !== undefined && payload.brandId !== null) {
+    body.brandId = Number(payload.brandId);
+  }
+  if (payload.categoryId !== undefined && payload.categoryId !== null) {
+    body.categoryId = Number(payload.categoryId);
+  }
+  if (payload.customUrl !== undefined && payload.customUrl !== null && payload.customUrl.trim().length > 0) {
+    body.customUrl = payload.customUrl.trim();
+  }
+  if (payload.label !== undefined && payload.label !== null && payload.label.trim().length > 0) {
+    body.label = payload.label.trim();
+  }
+  if (typeof payload.orderIndex === 'number') {
+    body.orderIndex = payload.orderIndex;
+  }
+  if (typeof payload.isVisible === 'boolean') {
+    body.isVisible = payload.isVisible;
+  }
+
+  return fetchAdminJson<NavItemResponse>(`/admin/navigation/items/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Updates item visibility status: PATCH /api/admin/navigation/items/{id}/status (ROLE_ADMIN)
+ */
+export async function updateAdminNavigationItemStatus(
+  id: string | number,
+  isVisible: boolean
+): Promise<NavItemResponse> {
+  return fetchAdminJson<NavItemResponse>(`/admin/navigation/items/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isVisible: Boolean(isVisible) }),
+  });
+}
+
+/**
+ * Deletes a navigation item from the menu: DELETE /api/admin/navigation/items/{id} (ROLE_ADMIN)
+ * Note: Never deletes the underlying brand, category, or product.
+ */
+export async function deleteAdminNavigationItem(
+  id: string | number
+): Promise<{ message: string }> {
+  return fetchAdminJson<{ message: string }>(`/admin/navigation/items/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Reorders navigation items within a section: PATCH /api/admin/navigation/sections/{sectionId}/items/order (ROLE_ADMIN)
+ */
+export async function reorderAdminNavigationItems(
+  sectionId: string | number,
+  items: OrderItemPosition[]
+): Promise<NavItemResponse[]> {
+  return fetchAdminJson<NavItemResponse[]>(
+    `/admin/navigation/sections/${sectionId}/items/order`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ items }),
+    }
+  );
 }
 
 

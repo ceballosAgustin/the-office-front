@@ -9,6 +9,7 @@ function parseLocationState(fallbackProductId) {
       productId: String(fallbackProductId || ''),
       categoryId: null,
       search: '',
+      brand: '',
     };
   }
 
@@ -25,18 +26,23 @@ function parseLocationState(fallbackProductId) {
       ? Number(rawCat)
       : null;
   const rawSearch = params.get('search') ? params.get('search').trim() : '';
+  const rawBrand = params.get('brand') ? params.get('brand').trim().toLowerCase() : '';
 
   return {
     productId: resolvedProductId,
     categoryId: parsedCat,
     search: rawSearch,
+    brand: rawBrand,
   };
 }
 
-function buildProductHref(targetId, categoryId = null, search = '') {
+function buildProductHref(targetId, categoryId = null, search = '', brand = '') {
   const params = new URLSearchParams();
   if (categoryId !== null && categoryId !== undefined) {
     params.set('categoryId', String(categoryId));
+  }
+  if (brand && brand.trim()) {
+    params.set('brand', brand.trim().toLowerCase());
   }
   if (search) {
     params.set('search', search);
@@ -50,6 +56,7 @@ export default function ProductDetailView({ productId }) {
     productId: String(productId || ''),
     categoryId: null,
     search: '',
+    brand: '',
   }));
 
   const [product, setProduct] = useState(null);
@@ -57,19 +64,21 @@ export default function ProductDetailView({ productId }) {
   const [catalogList, setCatalogList] = useState([]);
   const [effectiveCategoryId, setEffectiveCategoryId] = useState(null);
   const [effectiveSearch, setEffectiveSearch] = useState('');
+  const [effectiveBrand, setEffectiveBrand] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
   // Cache catalog collections by context key to avoid redundant list requests when moving between products
   const collectionCacheRef = useRef(new Map());
 
-  const fetchCollectionForContext = async (categoryId, search) => {
-    const key = `${categoryId ?? 'all'}|${search || ''}`;
+  const fetchCollectionForContext = async (categoryId, search, brand) => {
+    const key = `${categoryId ?? 'all'}|${brand || 'all'}|${search || ''}`;
     if (collectionCacheRef.current.has(key)) {
       return collectionCacheRef.current.get(key);
     }
     const list = await fetchProducts({
       categoryId: categoryId ?? undefined,
+      brand: brand || undefined,
       search: search || undefined,
     });
     collectionCacheRef.current.set(key, list);
@@ -86,9 +95,11 @@ export default function ProductDetailView({ productId }) {
     try {
       const [productData, contextualList] = await Promise.all([
         fetchProductById(currentId),
-        fetchCollectionForContext(targetState.categoryId, targetState.search).catch(
-          () => []
-        ),
+        fetchCollectionForContext(
+          targetState.categoryId,
+          targetState.search,
+          targetState.brand
+        ).catch(() => []),
       ]);
 
       setProduct(productData);
@@ -103,19 +114,23 @@ export default function ProductDetailView({ productId }) {
 
       if (
         indexInContext === -1 &&
-        (targetState.categoryId !== null || Boolean(targetState.search))
+        (targetState.categoryId !== null ||
+          Boolean(targetState.search) ||
+          Boolean(targetState.brand))
       ) {
-        // Fallback to general catalog if the product does not belong to the requested filter context
-        const generalList = await fetchCollectionForContext(null, '').catch(
+        // Fallback to general catalog for sequence list only, but preserve origin filter context
+        const generalList = await fetchCollectionForContext(null, '', '').catch(
           () => []
         );
         setCatalogList(generalList);
-        setEffectiveCategoryId(null);
-        setEffectiveSearch('');
+        setEffectiveCategoryId(targetState.categoryId);
+        setEffectiveSearch(targetState.search);
+        setEffectiveBrand(targetState.brand || '');
       } else {
         setCatalogList(contextualList);
         setEffectiveCategoryId(targetState.categoryId);
         setEffectiveSearch(targetState.search);
+        setEffectiveBrand(targetState.brand || '');
       }
     } catch (err) {
       setError({
@@ -143,7 +158,7 @@ export default function ProductDetailView({ productId }) {
     const resolved =
       typeof window !== 'undefined' ? parseLocationState(navState.productId) : navState;
     loadProductAndContext(resolved);
-  }, [navState.productId, navState.categoryId, navState.search]);
+  }, [navState.productId, navState.categoryId, navState.search, navState.brand]);
 
   const currentIndex = catalogList.findIndex(
     (item) => String(item.id) === String(product?.id ?? navState.productId)
@@ -173,7 +188,8 @@ export default function ProductDetailView({ productId }) {
     const nextHref = buildProductHref(
       targetProduct.id,
       effectiveCategoryId,
-      effectiveSearch
+      effectiveSearch,
+      effectiveBrand
     );
 
     if (typeof window !== 'undefined') {
@@ -182,6 +198,7 @@ export default function ProductDetailView({ productId }) {
           productId: String(targetProduct.id),
           categoryId: effectiveCategoryId,
           search: effectiveSearch,
+          brand: effectiveBrand,
         },
         '',
         nextHref
@@ -193,6 +210,7 @@ export default function ProductDetailView({ productId }) {
       productId: String(targetProduct.id),
       categoryId: effectiveCategoryId,
       search: effectiveSearch,
+      brand: effectiveBrand,
     });
   };
 
@@ -200,6 +218,9 @@ export default function ProductDetailView({ productId }) {
     const params = new URLSearchParams();
     if (effectiveCategoryId !== null && effectiveCategoryId !== undefined) {
       params.set('categoryId', String(effectiveCategoryId));
+    }
+    if (effectiveBrand && effectiveBrand.trim()) {
+      params.set('brand', effectiveBrand.trim());
     }
     if (effectiveSearch && effectiveSearch.trim()) {
       params.set('search', effectiveSearch.trim());
@@ -327,6 +348,7 @@ export default function ProductDetailView({ productId }) {
           className="text-[11px] font-mono tracking-wider text-brand-dark/40 tabular-nums mr-1 select-none"
           aria-live="polite"
         >
+          {effectiveBrand ? `${effectiveBrand.toUpperCase()} · ` : ''}
           {effectiveCategoryId !== null && product?.category
             ? `${product.category} · `
             : ''}
@@ -340,7 +362,8 @@ export default function ProductDetailView({ productId }) {
               href={buildProductHref(
                 previousProduct.id,
                 effectiveCategoryId,
-                effectiveSearch
+                effectiveSearch,
+                effectiveBrand
               )}
               onClick={(e) => handleNavigateToProduct(e, previousProduct)}
               aria-label={`Producto anterior: ${previousProduct.title}`}
@@ -396,7 +419,8 @@ export default function ProductDetailView({ productId }) {
               href={buildProductHref(
                 nextProduct.id,
                 effectiveCategoryId,
-                effectiveSearch
+                effectiveSearch,
+                effectiveBrand
               )}
               onClick={(e) => handleNavigateToProduct(e, nextProduct)}
               aria-label={`Producto siguiente: ${nextProduct.title}`}
@@ -511,9 +535,19 @@ export default function ProductDetailView({ productId }) {
           {/* Header Info */}
           <div className="space-y-2 border-b border-brand-dark/[0.08] pb-5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/50">
-                {product.category}
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                {product.brandName && (
+                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-dark">
+                    {product.brandName}
+                  </span>
+                )}
+                {product.brandName && product.category && (
+                  <span className="text-brand-dark/30 text-xs select-none">/</span>
+                )}
+                <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/50">
+                  {product.category}
+                </span>
+              </div>
               {product.badge && (
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] px-2 py-0.5 bg-brand-dark text-[#FAFAFA] rounded-xs">
                   {product.badge}
@@ -596,9 +630,13 @@ export default function ProductDetailView({ productId }) {
           </svg>
           {effectiveSearch
             ? `Volver a resultados de «${effectiveSearch}»`
-            : effectiveCategoryId !== null && product?.category
-              ? `Volver a ${product.category}`
-              : 'Volver al catálogo completo'}
+            : effectiveBrand && effectiveCategoryId !== null && product?.category
+              ? `Volver a ${product.category} de ${effectiveBrand.toUpperCase()}`
+              : effectiveBrand
+                ? `Volver a productos de ${effectiveBrand.toUpperCase()}`
+                : effectiveCategoryId !== null && product?.category
+                  ? `Volver a ${product.category}`
+                  : 'Volver al catálogo completo'}
         </a>
 
         {renderProductSequenceControls()}

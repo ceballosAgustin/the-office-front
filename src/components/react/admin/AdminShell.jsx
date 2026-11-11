@@ -57,6 +57,8 @@ export default function AdminShell({ activeSection = 'dashboard', children }) {
     { id: 'inquiries', label: 'Consultas Comerciales', href: '/admin/inquiries' },
     { id: 'products', label: 'Products', href: '/admin/products' },
     { id: 'categories', label: 'Categories', href: '/admin/categories' },
+    { id: 'brands', label: 'Marcas', href: '/admin/brands' },
+    { id: 'navigation', label: 'Configuración de navegación', href: '/admin/navigation' },
   ];
 
   return (

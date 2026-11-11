@@ -9,6 +9,7 @@ import {
   setAdminProductPrimaryImage,
   reorderAdminProductImages,
   fetchCategories,
+  fetchAdminBrands,
   formatPrice,
 } from '../../../services/api';
 
@@ -88,6 +89,10 @@ export default function AdminProductFormView({
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [brandId, setBrandId] = useState('');
+  const [brands, setBrands] = useState([]);
+  const [brandsLoaded, setBrandsLoaded] = useState(false);
+  const [initialBrandSnapshot, setInitialBrandSnapshot] = useState(null);
   const [isActiveProduct, setIsActiveProduct] = useState(true);
   const [hadNullCategoryOnLoad, setHadNullCategoryOnLoad] = useState(false);
 
@@ -130,6 +135,16 @@ export default function AdminProductFormView({
     setPrice(prod.price != null ? String(prod.price) : '');
     setCategoryId(prod.categoryId != null ? String(prod.categoryId) : '');
     setHadNullCategoryOnLoad(prod.categoryId == null);
+    setBrandId(prod.brandId != null ? String(prod.brandId) : '');
+    setInitialBrandSnapshot(
+      prod.brandId != null
+        ? {
+          id: Number(prod.brandId),
+          name: prod.brandName || `Marca #${prod.brandId}`,
+          slug: prod.brandSlug || '',
+        }
+        : null
+    );
     setIsActiveProduct(prod.isActive !== false);
 
     const rawVariants = Array.isArray(prod.variants) ? prod.variants : [];
@@ -169,22 +184,30 @@ export default function AdminProductFormView({
 
     try {
       const catsPromise = fetchCategories();
+      const brandsPromise = fetchAdminBrands().catch(() => []);
+
       if (isEdit) {
         if (!resolvedId) return;
-        const [cats, prod] = await Promise.all([
+        const [cats, allBrands, prod] = await Promise.all([
           catsPromise,
+          brandsPromise,
           fetchAdminProductById(resolvedId),
         ]);
         setCategories(Array.isArray(cats) ? cats : []);
         setCategoriesLoaded(true);
+        setBrands(Array.isArray(allBrands) ? allBrands : []);
+        setBrandsLoaded(true);
         syncProductDataToState(prod);
       } else {
-        const cats = await catsPromise;
+        const [cats, allBrands] = await Promise.all([catsPromise, brandsPromise]);
         setCategories(Array.isArray(cats) ? cats : []);
         setCategoriesLoaded(true);
+        setBrands(Array.isArray(allBrands) ? allBrands : []);
+        setBrandsLoaded(true);
         if (Array.isArray(cats) && cats.length > 0) {
           setCategoryId(String(cats[0].id));
         }
+        setBrandId('');
         // Default initial sizes for new product creation
         setVariants([
           { localKey: 'new-S', id: null, size: 'S', stock: 5, isActive: true },
@@ -235,6 +258,19 @@ export default function AdminProductFormView({
   const activeVariants = variants.filter((v) => v.isActive !== false);
   const inactiveVariants = variants.filter((v) => v.isActive === false);
 
+  // Active brands sorted alphabetically for product selector
+  const activeBrands = brands
+    .filter((b) => b.isActive !== false)
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+  const currentProductBrandInList = brandId
+    ? brands.find((b) => String(b.id) === String(brandId))
+    : null;
+
+  const isCurrentBrandInactive = Boolean(
+    currentProductBrandInList && currentProductBrandInList.isActive === false
+  );
+
   // Switch between Multi-size and Single-size ('Único' / 'One Size')
   const handleSwitchSizingMode = (nextMode) => {
     if (nextMode === sizingMode) return;
@@ -254,8 +290,8 @@ export default function AdminProductFormView({
             idx === existingSingleIdx
               ? { ...v, isActive: true, stock: v.stock > 0 ? v.stock : 10 }
               : v.id != null
-              ? { ...v, isActive: false }
-              : null
+                ? { ...v, isActive: false }
+                : null
           ).filter(Boolean);
         }
 
@@ -626,8 +662,7 @@ export default function AdminProductFormView({
       setIsActiveProduct(updated.isActive !== false);
       setShowDeactivateModal(false);
       setFormSuccess(
-        `El producto fue ${
-          updated.isActive !== false ? 'activado' : 'desactivado'
+        `El producto fue ${updated.isActive !== false ? 'activado' : 'desactivado'
         } exitosamente.`
       );
     } catch (err) {
@@ -696,6 +731,14 @@ export default function AdminProductFormView({
       return;
     }
 
+    // Check inactive brand validation (both in creation and edition)
+    if (isCurrentBrandInactive && currentProductBrandInList) {
+      const msg = `La marca seleccionada ("${currentProductBrandInList.name}") está inactiva. Para guardar cambios, reactivala en Marcas o seleccioná "Sin marca" u otra marca activa.`;
+      setFieldErrors((prev) => ({ ...prev, brandId: msg }));
+      setFormError(msg);
+      return;
+    }
+
     // Validate variants if creating or if variants were modified
     const shouldSendVariants = !isEdit || variantsDirty;
     if (shouldSendVariants) {
@@ -739,13 +782,14 @@ export default function AdminProductFormView({
         description: description.trim(),
         price: numericPrice,
         categoryId: numericCategoryId,
+        brandId: brandId && brandId.trim() !== '' ? Number(brandId) : null,
         variants: shouldSendVariants
           ? variants.map((v) => ({
-              id: v.id != null ? Number(v.id) : undefined,
-              size: v.size.trim(),
-              stock: Math.max(0, Number(v.stock) || 0),
-              isActive: v.isActive !== false,
-            }))
+            id: v.id != null ? Number(v.id) : undefined,
+            size: v.size.trim(),
+            stock: Math.max(0, Number(v.stock) || 0),
+            isActive: v.isActive !== false,
+          }))
           : undefined,
       };
 
@@ -786,7 +830,7 @@ export default function AdminProductFormView({
       }
       setFormError(
         err?.message ||
-          'No se pudo guardar el producto. Revisá los datos ingresados e intentá nuevamente.'
+        'No se pudo guardar el producto. Revisá los datos ingresados e intentá nuevamente.'
       );
     } finally {
       setIsSaving(false);
@@ -801,9 +845,8 @@ export default function AdminProductFormView({
           'Producto creado exitosamente. Ya podés gestionar su galería e inventario.'
         );
         params.delete('created');
-        const cleanUrl = `${window.location.pathname}${
-          params.toString() ? `?${params.toString()}` : ''
-        }`;
+        const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''
+          }`;
         window.history.replaceState({}, '', cleanUrl);
       }
     }
@@ -916,16 +959,14 @@ export default function AdminProductFormView({
                 </h1>
                 {isEdit && (
                   <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider border rounded-xs ${
-                      isActiveProduct
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider border rounded-xs ${isActiveProduct
                         ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
                         : 'bg-brand-dark/[0.06] text-brand-dark/65 border-brand-dark/15'
-                    }`}
+                      }`}
                   >
                     <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        isActiveProduct ? 'bg-emerald-600' : 'bg-brand-dark/40'
-                      }`}
+                      className={`w-1.5 h-1.5 rounded-full ${isActiveProduct ? 'bg-emerald-600' : 'bg-brand-dark/40'
+                        }`}
                     />
                     <span>{isActiveProduct ? 'Activo' : 'Inactivo'}</span>
                   </span>
@@ -960,33 +1001,31 @@ export default function AdminProductFormView({
                       handleToggleProductActive(true);
                     }
                   }}
-                  className={`px-3.5 py-2 text-xs font-semibold uppercase tracking-wider border rounded-xs transition-colors cursor-pointer ${
-                    isActiveProduct
+                  className={`px-3.5 py-2 text-xs font-semibold uppercase tracking-wider border rounded-xs transition-colors cursor-pointer ${isActiveProduct
                       ? 'border-red-200 text-red-800 bg-white hover:bg-red-50'
                       : 'border-emerald-300 text-emerald-900 bg-emerald-50 hover:bg-emerald-100'
-                  }`}
+                    }`}
                 >
                   {isTogglingStatus
                     ? 'Actualizando...'
                     : isActiveProduct
-                    ? 'Desactivar producto'
-                    : 'Reactivar producto'}
+                      ? 'Desactivar producto'
+                      : 'Reactivar producto'}
                 </button>
               )}
               <button
                 type="submit"
                 disabled={isSaving || (categoriesLoaded && categories.length === 0)}
-                className={`px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] rounded-xs transition-opacity ${
-                  isSaving || (categoriesLoaded && categories.length === 0)
+                className={`px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] rounded-xs transition-opacity ${isSaving || (categoriesLoaded && categories.length === 0)
                     ? 'bg-brand-dark/40 cursor-not-allowed'
                     : 'bg-brand-dark hover:opacity-90 cursor-pointer'
-                }`}
+                  }`}
               >
                 {isSaving
                   ? 'Guardando...'
                   : isEdit
-                  ? 'Guardar cambios'
-                  : 'Crear producto'}
+                    ? 'Guardar cambios'
+                    : 'Crear producto'}
               </button>
             </div>
           </div>
@@ -1106,56 +1145,56 @@ export default function AdminProductFormView({
                       }}
                       placeholder="Ej. Remera Oversize Heavyweight"
                       aria-invalid={fieldErrors.title ? 'true' : undefined}
-                      className={`form-input w-full h-11 px-3.5 text-base sm:text-sm ${
-                        fieldErrors.title ? 'form-input-error' : ''
-                      }`}
+                      className={`form-input w-full h-11 px-3.5 text-base sm:text-sm ${fieldErrors.title ? 'form-input-error' : ''
+                        }`}
                     />
                     {fieldErrors.title && (
                       <p className="text-xs text-red-600">{fieldErrors.title}</p>
                     )}
                   </div>
 
-                  {/* Price & Category Row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label
-                        htmlFor="product-price"
-                        className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
-                      >
-                        Precio (USD) <span className="text-red-600">*</span>
-                      </label>
-                      <input
-                        id="product-price"
-                        type="number"
-                        min="1"
-                        step="0.01"
-                        required
-                        disabled={isSaving}
-                        value={price}
-                        onChange={(e) => {
-                          setPrice(e.target.value);
-                          if (fieldErrors.price) {
-                            setFieldErrors((prev) => ({ ...prev, price: undefined }));
-                          }
-                        }}
-                        placeholder="Ej. 150"
-                        aria-invalid={fieldErrors.price ? 'true' : undefined}
-                        className={`form-input w-full h-11 px-3.5 text-base sm:text-sm tabular-nums ${
-                          fieldErrors.price ? 'form-input-error' : ''
+                  {/* Price */}
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="product-price"
+                      className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
+                    >
+                      Precio (USD) <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      id="product-price"
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      required
+                      disabled={isSaving}
+                      value={price}
+                      onChange={(e) => {
+                        setPrice(e.target.value);
+                        if (fieldErrors.price) {
+                          setFieldErrors((prev) => ({ ...prev, price: undefined }));
+                        }
+                      }}
+                      placeholder="Ej. 150"
+                      aria-invalid={fieldErrors.price ? 'true' : undefined}
+                      className={`form-input w-full h-11 px-3.5 text-base sm:text-sm tabular-nums ${fieldErrors.price ? 'form-input-error' : ''
                         }`}
-                      />
-                      {price && Number(price) > 0 && (
-                        <p className="text-[11px] text-brand-dark/50 tabular-nums">
-                          Vista previa: {formatPrice(Number(price))}
-                        </p>
-                      )}
-                      {fieldErrors.price && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.price}
-                        </p>
-                      )}
-                    </div>
+                    />
+                    {price && Number(price) > 0 && (
+                      <p className="text-[11px] text-brand-dark/50 tabular-nums">
+                        Vista previa: {formatPrice(Number(price))}
+                      </p>
+                    )}
+                    {fieldErrors.price && (
+                      <p className="text-xs text-red-600">
+                        {fieldErrors.price}
+                      </p>
+                    )}
+                  </div>
 
+                  {/* Taxonomy Row: Category & Brand */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Category Selector */}
                     <div className="space-y-1.5">
                       <label
                         htmlFor="product-category"
@@ -1178,9 +1217,8 @@ export default function AdminProductFormView({
                           }
                         }}
                         aria-invalid={fieldErrors.categoryId ? 'true' : undefined}
-                        className={`form-select w-full h-11 pl-3.5 pr-9 text-base sm:text-sm ${
-                          fieldErrors.categoryId ? 'form-input-error' : ''
-                        }`}
+                        className={`form-select w-full h-11 pl-3.5 pr-9 text-base sm:text-sm ${fieldErrors.categoryId ? 'form-input-error' : ''
+                          }`}
                       >
                         <option value="">
                           {categories.length === 0
@@ -1196,6 +1234,74 @@ export default function AdminProductFormView({
                       {fieldErrors.categoryId && (
                         <p className="text-xs text-red-600">
                           {fieldErrors.categoryId}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Brand Selector */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <label
+                          htmlFor="product-brand"
+                          className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
+                        >
+                          Marca
+                        </label>
+                        <a
+                          href="/admin/brands"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] font-semibold uppercase tracking-wider text-brand-dark/50 hover:text-brand-dark underline underline-offset-2"
+                        >
+                          Marcas ↗
+                        </a>
+                      </div>
+                      <select
+                        id="product-brand"
+                        disabled={isSaving}
+                        value={brandId}
+                        onChange={(e) => {
+                          setBrandId(e.target.value);
+                          if (fieldErrors.brandId) {
+                            setFieldErrors((prev) => ({
+                              ...prev,
+                              brandId: undefined,
+                            }));
+                          }
+                        }}
+                        aria-invalid={fieldErrors.brandId ? 'true' : undefined}
+                        className={`form-select w-full h-11 pl-3.5 pr-9 text-base sm:text-sm ${fieldErrors.brandId ? 'form-input-error' : ''
+                          }`}
+                      >
+                        <option value="">Sin marca</option>
+                        {/* Preserve inactive brand option if currently assigned to this product */}
+                        {isCurrentBrandInactive && currentProductBrandInList && (
+                          <option value={String(currentProductBrandInList.id)}>
+                            {currentProductBrandInList.name} (Inactiva)
+                          </option>
+                        )}
+                        {activeBrands.map((b) => (
+                          <option key={b.id} value={String(b.id)}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+                      {isCurrentBrandInactive && currentProductBrandInList && (
+                        <p className="text-[11px] text-amber-800 leading-tight">
+                          Esta marca está inactiva. Para guardar cambios debés reactivarla en Marcas o seleccionar &ldquo;Sin marca&rdquo;.
+                        </p>
+                      )}
+                      {brandsLoaded && brands.length === 0 && (
+                        <p className="text-[11px] text-brand-dark/50">
+                          No hay marcas registradas.{' '}
+                          <a href="/admin/brands" className="underline font-semibold text-brand-dark">
+                            Crear marca
+                          </a>
+                        </p>
+                      )}
+                      {fieldErrors.brandId && (
+                        <p className="text-xs text-red-600">
+                          {fieldErrors.brandId}
                         </p>
                       )}
                     </div>
@@ -1225,9 +1331,8 @@ export default function AdminProductFormView({
                       }}
                       placeholder="Detalle de materiales, calce, gramaje y confección..."
                       aria-invalid={fieldErrors.description ? 'true' : undefined}
-                      className={`form-textarea w-full p-3.5 text-base sm:text-sm resize-y leading-relaxed ${
-                        fieldErrors.description ? 'form-input-error' : ''
-                      }`}
+                      className={`form-textarea w-full p-3.5 text-base sm:text-sm resize-y leading-relaxed ${fieldErrors.description ? 'form-input-error' : ''
+                        }`}
                     />
                     {fieldErrors.description && (
                       <p className="text-xs text-red-600">
@@ -1269,27 +1374,25 @@ export default function AdminProductFormView({
                 {/* Sizing Type Selector: Apparel Sizes vs Single Variant (No Physical Size) */}
                 <div className="space-y-2">
                   <span className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/70">
-                     Esquema de talles del producto
+                    Esquema de talles del producto
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <button
                       type="button"
                       onClick={() => handleSwitchSizingMode('multi')}
-                      className={`p-3 text-left border rounded-xs transition-colors cursor-pointer ${
-                        sizingMode === 'multi'
+                      className={`p-3 text-left border rounded-xs transition-colors cursor-pointer ${sizingMode === 'multi'
                           ? 'bg-brand-dark text-[#FAFAFA] border-brand-dark'
                           : 'bg-white text-brand-dark border-brand-dark/15 hover:border-brand-dark'
-                      }`}
+                        }`}
                     >
                       <span className="block text-xs font-bold uppercase tracking-wider">
                         Múltiples talles (S / M / L / Calzado)
                       </span>
                       <span
-                        className={`block text-[11px] mt-0.5 ${
-                          sizingMode === 'multi'
+                        className={`block text-[11px] mt-0.5 ${sizingMode === 'multi'
                             ? 'text-[#FAFAFA]/75'
                             : 'text-brand-dark/55'
-                        }`}
+                          }`}
                       >
                         El comprador elige su talle en la página del producto.
                       </span>
@@ -1298,21 +1401,19 @@ export default function AdminProductFormView({
                     <button
                       type="button"
                       onClick={() => handleSwitchSizingMode('single')}
-                      className={`p-3 text-left border rounded-xs transition-colors cursor-pointer ${
-                        sizingMode === 'single'
+                      className={`p-3 text-left border rounded-xs transition-colors cursor-pointer ${sizingMode === 'single'
                           ? 'bg-brand-dark text-[#FAFAFA] border-brand-dark'
                           : 'bg-white text-brand-dark border-brand-dark/15 hover:border-brand-dark'
-                      }`}
+                        }`}
                     >
                       <span className="block text-xs font-bold uppercase tracking-wider">
                         Sin talle físico (Único / One Size)
                       </span>
                       <span
-                        className={`block text-[11px] mt-0.5 ${
-                          sizingMode === 'single'
+                        className={`block text-[11px] mt-0.5 ${sizingMode === 'single'
                             ? 'text-[#FAFAFA]/75'
                             : 'text-brand-dark/55'
-                        }`}
+                          }`}
                       >
                         Usa una variante única sin pedir selección de talle en tienda.
                       </span>
@@ -1704,11 +1805,10 @@ export default function AdminProductFormView({
                           return (
                             <div
                               key={img.id || idx}
-                              className={`bg-white border rounded-xs overflow-hidden flex flex-col justify-between ${
-                                isPrimary
+                              className={`bg-white border rounded-xs overflow-hidden flex flex-col justify-between ${isPrimary
                                   ? 'border-brand-dark ring-1 ring-brand-dark'
                                   : 'border-brand-dark/12'
-                              }`}
+                                }`}
                             >
                               <div className="aspect-[4/5] w-full bg-[#F2F2F0] relative overflow-hidden">
                                 <img
@@ -1913,17 +2013,16 @@ export default function AdminProductFormView({
                   disabled={
                     isSaving || (categoriesLoaded && categories.length === 0)
                   }
-                  className={`w-full min-h-[48px] px-5 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] rounded-xs transition-opacity ${
-                    isSaving || (categoriesLoaded && categories.length === 0)
+                  className={`w-full min-h-[48px] px-5 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] rounded-xs transition-opacity ${isSaving || (categoriesLoaded && categories.length === 0)
                       ? 'bg-brand-dark/40 cursor-not-allowed'
                       : 'bg-brand-dark hover:opacity-90 cursor-pointer'
-                  }`}
+                    }`}
                 >
                   {isSaving
                     ? 'Guardando en el servidor...'
                     : isEdit
-                    ? 'Guardar cambios del producto'
-                    : 'Crear producto en el catálogo'}
+                      ? 'Guardar cambios del producto'
+                      : 'Crear producto en el catálogo'}
                 </button>
                 <a
                   href="/admin/products"
