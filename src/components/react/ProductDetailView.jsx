@@ -1,85 +1,216 @@
 import { useState, useEffect, useRef } from 'react';
 import ProductGallery from './ProductGallery';
 import ProductPurchaseSection from './ProductPurchaseSection';
-import { fetchProductById, fetchProducts, formatPrice } from '../../services/api';
+import {
+  fetchProductById,
+  fetchProducts,
+  formatPrice,
+  buildCatalogHref,
+} from '../../services/api';
 
 function parseLocationState(fallbackProductId) {
   if (typeof window === 'undefined') {
     return {
       productId: String(fallbackProductId || ''),
+      category: null,
       categoryId: null,
-      search: '',
       brand: '',
+      gender: null,
+      size: null,
+      search: '',
     };
   }
 
-  const match = window.location.pathname.match(/\/products\/([^/?#]+)/);
-  const resolvedProductId =
-    match && match[1]
-      ? decodeURIComponent(match[1])
-      : String(fallbackProductId || '');
-
   const params = new URLSearchParams(window.location.search);
-  const rawCat = params.get('categoryId');
-  const parsedCat =
-    rawCat !== null && rawCat.trim() !== '' && Number.isFinite(Number(rawCat))
-      ? Number(rawCat)
+  const queryId = params.get('id')?.trim();
+
+  const match = window.location.pathname.match(/\/products\/([^/?#]+)/);
+  const pathId =
+    match && match[1] && match[1].toLowerCase() !== 'fallback'
+      ? decodeURIComponent(match[1])
       : null;
-  const rawSearch = params.get('search') ? params.get('search').trim() : '';
-  const rawBrand = params.get('brand') ? params.get('brand').trim().toLowerCase() : '';
+  const resolvedProductId =
+    pathId || queryId || String(fallbackProductId || '');
+
+  // Category slug / legacy categoryId / fromCategory
+  const rawCatSlug =
+    params.get('category')?.trim().toLowerCase() ||
+    params.get('fromCategory')?.trim().toLowerCase() ||
+    null;
+
+  const rawCatId =
+    params.get('categoryId') ||
+    (rawCatSlug && Number.isFinite(Number(rawCatSlug)) ? rawCatSlug : null);
+  const parsedCatId =
+    rawCatId !== null && String(rawCatId).trim() !== '' && Number.isFinite(Number(rawCatId))
+      ? Number(rawCatId)
+      : null;
+
+  const resolvedCatSlug =
+    rawCatSlug && !Number.isFinite(Number(rawCatSlug)) ? rawCatSlug : null;
+
+  // Brand / fromBrand
+  const rawBrand =
+    params.get('brand')?.trim().toLowerCase() ||
+    params.get('fromBrand')?.trim().toLowerCase() ||
+    '';
+
+  // Gender / fromGender
+  const rawGender =
+    params.get('gender')?.trim().toUpperCase() ||
+    params.get('fromGender')?.trim().toUpperCase() ||
+    null;
+  const parsedGender =
+    rawGender === 'MEN' || rawGender === 'WOMEN' || rawGender === 'UNISEX'
+      ? rawGender
+      : null;
+
+  // Size / fromSize / variantSize
+  const rawSize =
+    params.get('size')?.trim() ||
+    params.get('fromSize')?.trim() ||
+    params.get('variantSize')?.trim() ||
+    null;
+
+  // Search / fromSearch
+  const rawSearch =
+    params.get('search')?.trim() ||
+    params.get('fromSearch')?.trim() ||
+    '';
 
   return {
     productId: resolvedProductId,
-    categoryId: parsedCat,
-    search: rawSearch,
+    category: resolvedCatSlug,
+    categoryId: parsedCatId,
     brand: rawBrand,
+    gender: parsedGender,
+    size: rawSize,
+    search: rawSearch,
   };
 }
 
-function buildProductHref(targetId, categoryId = null, search = '', brand = '') {
+function buildProductHref(targetId, context = {}) {
   const params = new URLSearchParams();
-  if (categoryId !== null && categoryId !== undefined) {
-    params.set('categoryId', String(categoryId));
+  if (context.category) {
+    params.set('category', context.category);
+    params.set('fromCategory', context.category);
+  } else if (context.categoryId != null) {
+    params.set('categoryId', String(context.categoryId));
+    params.set('fromCategory', String(context.categoryId));
   }
-  if (brand && brand.trim()) {
-    params.set('brand', brand.trim().toLowerCase());
+  if (context.brand) {
+    params.set('brand', context.brand);
+    params.set('fromBrand', context.brand);
   }
-  if (search) {
-    params.set('search', search);
+  if (context.gender) {
+    params.set('gender', context.gender.toLowerCase());
+    params.set('fromGender', context.gender.toLowerCase());
+  }
+  if (context.size) {
+    params.set('size', context.size);
+    params.set('fromSize', context.size);
+  }
+  if (context.search) {
+    params.set('search', context.search);
+    params.set('fromSearch', context.search);
   }
   const query = params.toString();
   return query ? `/products/${targetId}?${query}` : `/products/${targetId}`;
 }
 
-export default function ProductDetailView({ productId }) {
+function updateProductMeta(product) {
+  if (typeof document === 'undefined') return;
+
+  const CANONICAL_ORIGIN = 'https://theofficeba.ar';
+  let linkCanonical = document.querySelector('link[rel="canonical"]');
+  let metaOgUrl = document.querySelector('meta[property="og:url"]');
+
+  if (product && product.id) {
+    const canonicalHref = `${CANONICAL_ORIGIN}/products/${product.id}`;
+
+    if (!linkCanonical) {
+      linkCanonical = document.createElement('link');
+      linkCanonical.setAttribute('rel', 'canonical');
+      document.head.appendChild(linkCanonical);
+    }
+    linkCanonical.setAttribute('href', canonicalHref);
+
+    if (!metaOgUrl) {
+      metaOgUrl = document.createElement('meta');
+      metaOgUrl.setAttribute('property', 'og:url');
+      document.head.appendChild(metaOgUrl);
+    }
+    metaOgUrl.setAttribute('content', canonicalHref);
+
+    if (product.title) {
+      document.title = `${product.title} — The Office BA`;
+      const metaOgTitle = document.querySelector('meta[property="og:title"]');
+      if (metaOgTitle) {
+        metaOgTitle.setAttribute('content', `${product.title} — The Office BA`);
+      }
+      const metaTwitterTitle = document.querySelector('meta[name="twitter:title"]');
+      if (metaTwitterTitle) {
+        metaTwitterTitle.setAttribute('content', `${product.title} — The Office BA`);
+      }
+    }
+  } else {
+    // If product does not exist, remove any canonical/og:url to avoid presenting it as a valid product
+    if (linkCanonical) {
+      linkCanonical.remove();
+    }
+    if (metaOgUrl) {
+      metaOgUrl.remove();
+    }
+    document.title = 'Producto no encontrado — The Office BA';
+  }
+}
+
+/**
+ * @param {Object} [props]
+ * @param {string|number} [props.productId]
+ */
+export default function ProductDetailView({ productId = '' } = {}) {
   const [navState, setNavState] = useState(() => ({
     productId: String(productId || ''),
+    category: null,
     categoryId: null,
-    search: '',
     brand: '',
+    gender: null,
+    size: null,
+    search: '',
   }));
 
   const [product, setProduct] = useState(null);
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [catalogList, setCatalogList] = useState([]);
-  const [effectiveCategoryId, setEffectiveCategoryId] = useState(null);
-  const [effectiveSearch, setEffectiveSearch] = useState('');
-  const [effectiveBrand, setEffectiveBrand] = useState('');
+  const [effectiveContext, setEffectiveContext] = useState(() => ({
+    category: null,
+    categoryId: null,
+    brand: '',
+    gender: null,
+    size: null,
+    search: '',
+  }));
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
   // Cache catalog collections by context key to avoid redundant list requests when moving between products
   const collectionCacheRef = useRef(new Map());
 
-  const fetchCollectionForContext = async (categoryId, search, brand) => {
-    const key = `${categoryId ?? 'all'}|${brand || 'all'}|${search || ''}`;
+  const fetchCollectionForContext = async (ctx) => {
+    const key = `${ctx.category || ctx.categoryId || 'all'}|${ctx.brand || 'all'}|${ctx.gender || 'all'}|${ctx.size || 'all'}|${ctx.search || ''}`;
     if (collectionCacheRef.current.has(key)) {
       return collectionCacheRef.current.get(key);
     }
     const list = await fetchProducts({
-      categoryId: categoryId ?? undefined,
-      brand: brand || undefined,
-      search: search || undefined,
+      category: ctx.category || undefined,
+      categoryId: ctx.category ? undefined : (ctx.categoryId ?? undefined),
+      brand: ctx.brand || undefined,
+      gender: ctx.gender || undefined,
+      variantSize: ctx.size || undefined,
+      search: ctx.search || undefined,
+      size: 50,
+      page: 0,
     });
     collectionCacheRef.current.set(key, list);
     return list;
@@ -87,7 +218,15 @@ export default function ProductDetailView({ productId }) {
 
   const loadProductAndContext = async (targetState) => {
     const currentId = String(targetState.productId || '');
-    if (!currentId) return;
+    if (!currentId) {
+      setIsLoading(false);
+      setError({
+        message: 'Producto no especificado.',
+        isNotFound: true,
+      });
+      updateProductMeta(null);
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -95,15 +234,12 @@ export default function ProductDetailView({ productId }) {
     try {
       const [productData, contextualList] = await Promise.all([
         fetchProductById(currentId),
-        fetchCollectionForContext(
-          targetState.categoryId,
-          targetState.search,
-          targetState.brand
-        ).catch(() => []),
+        fetchCollectionForContext(targetState).catch(() => []),
       ]);
 
       setProduct(productData);
       setSelectedVariant(null);
+      updateProductMeta(productData);
       if (typeof document !== 'undefined' && productData?.title) {
         document.title = `${productData.title} — The Office BA`;
       }
@@ -112,31 +248,44 @@ export default function ProductDetailView({ productId }) {
         (item) => String(item.id) === currentId
       );
 
-      if (
-        indexInContext === -1 &&
-        (targetState.categoryId !== null ||
-          Boolean(targetState.search) ||
-          Boolean(targetState.brand))
-      ) {
+      const hasSpecificFilters = Boolean(
+        targetState.category ||
+        targetState.categoryId !== null ||
+        targetState.search ||
+        targetState.brand ||
+        targetState.gender ||
+        targetState.size
+      );
+
+      if (indexInContext === -1 && hasSpecificFilters) {
         // Fallback to general catalog for sequence list only, but preserve origin filter context
-        const generalList = await fetchCollectionForContext(null, '', '').catch(
-          () => []
-        );
+        const generalList = await fetchCollectionForContext({}).catch(() => []);
         setCatalogList(generalList);
-        setEffectiveCategoryId(targetState.categoryId);
-        setEffectiveSearch(targetState.search);
-        setEffectiveBrand(targetState.brand || '');
+        setEffectiveContext({
+          category: targetState.category,
+          categoryId: targetState.categoryId,
+          brand: targetState.brand || '',
+          gender: targetState.gender,
+          size: targetState.size,
+          search: targetState.search,
+        });
       } else {
         setCatalogList(contextualList);
-        setEffectiveCategoryId(targetState.categoryId);
-        setEffectiveSearch(targetState.search);
-        setEffectiveBrand(targetState.brand || '');
+        setEffectiveContext({
+          category: targetState.category,
+          categoryId: targetState.categoryId,
+          brand: targetState.brand || '',
+          gender: targetState.gender,
+          size: targetState.size,
+          search: targetState.search,
+        });
       }
     } catch (err) {
       setError({
         message: err.message || 'Error al obtener el producto.',
         isNotFound: err.isNotFound || false,
       });
+      updateProductMeta(null);
     } finally {
       setIsLoading(false);
     }
@@ -158,7 +307,15 @@ export default function ProductDetailView({ productId }) {
     const resolved =
       typeof window !== 'undefined' ? parseLocationState(navState.productId) : navState;
     loadProductAndContext(resolved);
-  }, [navState.productId, navState.categoryId, navState.search, navState.brand]);
+  }, [
+    navState.productId,
+    navState.category,
+    navState.categoryId,
+    navState.brand,
+    navState.gender,
+    navState.size,
+    navState.search,
+  ]);
 
   const currentIndex = catalogList.findIndex(
     (item) => String(item.id) === String(product?.id ?? navState.productId)
@@ -173,7 +330,6 @@ export default function ProductDetailView({ productId }) {
   const handleNavigateToProduct = (event, targetProduct) => {
     if (!targetProduct) return;
 
-    // Allow standard browser behavior for middle-click or modifier keys (open in new tab/window)
     if (
       event.button !== 0 ||
       event.metaKey ||
@@ -185,20 +341,13 @@ export default function ProductDetailView({ productId }) {
     }
 
     event.preventDefault();
-    const nextHref = buildProductHref(
-      targetProduct.id,
-      effectiveCategoryId,
-      effectiveSearch,
-      effectiveBrand
-    );
+    const nextHref = buildProductHref(targetProduct.id, effectiveContext);
 
     if (typeof window !== 'undefined') {
       window.history.pushState(
         {
           productId: String(targetProduct.id),
-          categoryId: effectiveCategoryId,
-          search: effectiveSearch,
-          brand: effectiveBrand,
+          ...effectiveContext,
         },
         '',
         nextHref
@@ -208,30 +357,24 @@ export default function ProductDetailView({ productId }) {
 
     setNavState({
       productId: String(targetProduct.id),
-      categoryId: effectiveCategoryId,
-      search: effectiveSearch,
-      brand: effectiveBrand,
+      ...effectiveContext,
     });
   };
 
-  const catalogBackHref = (() => {
-    const params = new URLSearchParams();
-    if (effectiveCategoryId !== null && effectiveCategoryId !== undefined) {
-      params.set('categoryId', String(effectiveCategoryId));
-    }
-    if (effectiveBrand && effectiveBrand.trim()) {
-      params.set('brand', effectiveBrand.trim());
-    }
-    if (effectiveSearch && effectiveSearch.trim()) {
-      params.set('search', effectiveSearch.trim());
-    }
-    const queryStr = params.toString();
-    return queryStr ? `/?${queryStr}#catalogo` : '/#catalogo';
-  })();
+  const catalogBackHref = buildCatalogHref({
+    category: effectiveContext.category,
+    categoryId: effectiveContext.categoryId,
+    brand: effectiveContext.brand,
+    gender: effectiveContext.gender,
+    size: effectiveContext.size,
+    search: effectiveContext.search,
+  });
 
-  const categoryBreadcrumbHref = product?.categoryId
-    ? `/?categoryId=${encodeURIComponent(product.categoryId)}#catalogo`
-    : '/#catalogo';
+  const categoryBreadcrumbHref = product?.categorySlug
+    ? buildCatalogHref({ category: product.categorySlug })
+    : product?.categoryId
+      ? buildCatalogHref({ categoryId: product.categoryId })
+      : '/#catalogo';
 
   // 1. Loading Skeleton State
   if (isLoading) {
@@ -567,8 +710,8 @@ export default function ProductDetailView({ productId }) {
               )}
               <span>
                 {selectedVariant &&
-                selectedVariant.price != null &&
-                Number(selectedVariant.price) > 0
+                  selectedVariant.price != null &&
+                  Number(selectedVariant.price) > 0
                   ? selectedVariant.formattedPrice || formatPrice(selectedVariant.price)
                   : product.formattedPrice}
               </span>

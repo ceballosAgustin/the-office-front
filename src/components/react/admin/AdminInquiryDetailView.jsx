@@ -12,7 +12,28 @@ import { formatArgentinaDateTime } from '../../../utils/date';
 const PLACEHOLDER_IMAGE =
   'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22400%22%20height%3D%22500%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23F2F2F0%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20dominant-baseline%3D%22middle%22%20text-anchor%3D%22middle%22%20font-family%3D%22sans-serif%22%20font-size%3D%2212%22%20fill%3D%22%231D110D80%22%3ESIN%20IMAGEN%3C%2Ftext%3E%3C%2Fsvg%3E';
 
-export default function AdminInquiryDetailView({ inquiryId }) {
+/**
+ * @param {Object} [props]
+ * @param {string|number} [props.inquiryId]
+ */
+export default function AdminInquiryDetailView({ inquiryId: propInquiryId = null } = {}) {
+  const [resolvedId, setResolvedId] = useState(propInquiryId || null);
+
+  useEffect(() => {
+    if (propInquiryId) {
+      setResolvedId(propInquiryId);
+    } else if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const queryId = params.get('id')?.trim();
+      const match = window.location.pathname.match(/\/admin\/inquiries\/([^/?#]+)/);
+      const pathId =
+        match && match[1] && match[1].toLowerCase() !== 'fallback'
+          ? decodeURIComponent(match[1])
+          : null;
+      setResolvedId(pathId || queryId || null);
+    }
+  }, [propInquiryId]);
+
   const [inquiry, setInquiry] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -24,7 +45,7 @@ export default function AdminInquiryDetailView({ inquiryId }) {
   const [isConfirmingSale, setIsConfirmingSale] = useState(false);
 
   // Confirm sale form fields
-  const [confirmContactName, setConfirmContactName] = useState('');
+  const [confirmactName, setConfirmContactName] = useState('');
   const [confirmContactPhone, setConfirmContactPhone] = useState('');
   const [confirmFormError, setConfirmFormError] = useState(null);
   const [confirmFieldErrors, setConfirmFieldErrors] = useState({});
@@ -35,12 +56,12 @@ export default function AdminInquiryDetailView({ inquiryId }) {
   const [createdOrder, setCreatedOrder] = useState(null);
 
   const loadInquiry = useCallback(async () => {
-    if (!inquiryId) return;
+    if (!resolvedId) return;
     setIsLoading(true);
     setLoadError(null);
 
     try {
-      const data = await fetchAdminInquiryById(inquiryId);
+      const data = await fetchAdminInquiryById(resolvedId);
       setInquiry(data);
       setConfirmContactName(data?.contactName ? data.contactName.trim() : '');
     } catch (err) {
@@ -59,7 +80,7 @@ export default function AdminInquiryDetailView({ inquiryId }) {
     } finally {
       setIsLoading(false);
     }
-  }, [inquiryId]);
+  }, [resolvedId]);
 
   useEffect(() => {
     loadInquiry();
@@ -193,11 +214,11 @@ export default function AdminInquiryDetailView({ inquiryId }) {
       setInquiry((prev) =>
         prev
           ? {
-              ...prev,
-              status: confirmation.status || 'CONVERTED',
-              orderId: confirmation.orderId,
-              orderNumber: confirmation.orderNumber,
-            }
+            ...prev,
+            status: confirmation.status || 'CONVERTED',
+            orderId: confirmation.orderId,
+            orderNumber: confirmation.orderNumber,
+          }
           : prev
       );
 
@@ -229,7 +250,7 @@ export default function AdminInquiryDetailView({ inquiryId }) {
       }
       setConfirmFormError(
         err?.message ||
-          'No se pudo confirmar la venta. Verificá la disponibilidad de stock de los artículos.'
+        'No se pudo confirmar la venta. Verificá la disponibilidad de stock de los artículos.'
       );
     } finally {
       setIsConfirmingSale(false);
@@ -240,9 +261,9 @@ export default function AdminInquiryDetailView({ inquiryId }) {
     inquiry?.status === 'CONVERTED' || inquiry?.status === 'NOT_CONVERTED';
   const totalUnits = Array.isArray(inquiry?.items)
     ? inquiry.items.reduce(
-        (sum, item) => sum + (Number(item.quantity) || 0),
-        0
-      )
+      (sum, item) => sum + (Number(item.quantity) || 0),
+      0
+    )
     : 0;
 
   return (
@@ -269,7 +290,7 @@ export default function AdminInquiryDetailView({ inquiryId }) {
           </li>
           <li aria-hidden="true">/</li>
           <li className="font-mono font-semibold text-brand-dark">
-            {inquiry?.inquiryNumber || `#${inquiryId}`}
+            {inquiry?.inquiryNumber || (resolvedId ? `#${resolvedId}` : '')}
           </li>
         </ol>
       </nav>
@@ -312,7 +333,7 @@ export default function AdminInquiryDetailView({ inquiryId }) {
       {!isLoading && loadError && !loadError.isNotFound && (
         <div className="p-6 bg-red-50/90 border border-red-200 rounded-xs text-xs text-red-800 space-y-3">
           <p className="text-sm font-bold">
-            No se pudo cargar la consulta #{inquiryId}
+            No se pudo cargar la consulta {resolvedId ? `#${resolvedId}` : ''}
           </p>
           <p>{loadError.message}</p>
           <div className="flex items-center gap-3 pt-1">
@@ -842,9 +863,8 @@ export default function AdminInquiryDetailView({ inquiryId }) {
                   aria-invalid={
                     confirmFieldErrors.contactName ? 'true' : undefined
                   }
-                  className={`form-input w-full h-10 px-3 text-base sm:text-sm ${
-                    confirmFieldErrors.contactName ? 'form-input-error' : ''
-                  }`}
+                  className={`form-input w-full h-10 px-3 text-base sm:text-sm ${confirmFieldErrors.contactName ? 'form-input-error' : ''
+                    }`}
                 />
                 {confirmFieldErrors.contactName && (
                   <p className="text-xs text-red-600">
@@ -882,9 +902,8 @@ export default function AdminInquiryDetailView({ inquiryId }) {
                   aria-invalid={
                     confirmFieldErrors.contactPhone ? 'true' : undefined
                   }
-                  className={`form-input w-full h-10 px-3 text-base sm:text-sm ${
-                    confirmFieldErrors.contactPhone ? 'form-input-error' : ''
-                  }`}
+                  className={`form-input w-full h-10 px-3 text-base sm:text-sm ${confirmFieldErrors.contactPhone ? 'form-input-error' : ''
+                    }`}
                 />
                 {confirmFieldErrors.contactPhone && (
                   <p className="text-xs text-red-600">
@@ -911,11 +930,10 @@ export default function AdminInquiryDetailView({ inquiryId }) {
                 <button
                   type="submit"
                   disabled={isConfirmingSale}
-                  className={`px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] rounded-xs transition-opacity ${
-                    isConfirmingSale
-                      ? 'bg-brand-dark/40 cursor-not-allowed'
-                      : 'bg-brand-dark hover:opacity-90 cursor-pointer'
-                  }`}
+                  className={`px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] rounded-xs transition-opacity ${isConfirmingSale
+                    ? 'bg-brand-dark/40 cursor-not-allowed'
+                    : 'bg-brand-dark hover:opacity-90 cursor-pointer'
+                    }`}
                 >
                   {isConfirmingSale
                     ? 'Confirmando venta...'

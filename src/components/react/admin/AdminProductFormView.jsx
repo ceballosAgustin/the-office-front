@@ -11,12 +11,15 @@ import {
   fetchCategories,
   fetchAdminBrands,
   formatPrice,
+  normalizeSneakerSizeValue,
+  isSneakersCategory,
 } from '../../../services/api';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB per file
 const MAX_TOTAL_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB per request
 
 const QUICK_SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
+const QUICK_SNEAKER_SIZES = ['7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11'];
 const SINGLE_SIZE_NAMES = new Set([
   'unico',
   'único',
@@ -57,10 +60,15 @@ function formatFileSize(bytes) {
   return `${Math.round(bytes / 1024)} KB`;
 }
 
+/**
+ * @param {Object} [props]
+ * @param {'create'|'edit'} [props.mode]
+ * @param {string|number} [props.productId]
+ */
 export default function AdminProductFormView({
   mode = 'create',
-  productId: propProductId,
-}) {
+  productId: propProductId = null,
+} = {}) {
   const isEdit = mode === 'edit';
 
   const [resolvedId, setResolvedId] = useState(propProductId || null);
@@ -69,11 +77,20 @@ export default function AdminProductFormView({
     if (propProductId) {
       setResolvedId(propProductId);
     } else if (isEdit && typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const queryId = params.get('id')?.trim();
       const parts = window.location.pathname.split('/').filter(Boolean);
       // Expected: ['admin', 'products', '{id}', 'edit']
       const idx = parts.indexOf('products');
-      if (idx !== -1 && parts[idx + 1] && parts[idx + 1] !== 'new') {
+      if (
+        idx !== -1 &&
+        parts[idx + 1] &&
+        parts[idx + 1] !== 'new' &&
+        parts[idx + 1] !== 'fallback-edit'
+      ) {
         setResolvedId(parts[idx + 1]);
+      } else if (queryId) {
+        setResolvedId(queryId);
       }
     }
   }, [propProductId, isEdit]);
@@ -90,6 +107,7 @@ export default function AdminProductFormView({
   const [price, setPrice] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [brandId, setBrandId] = useState('');
+  const [gender, setGender] = useState('UNISEX');
   const [brands, setBrands] = useState([]);
   const [brandsLoaded, setBrandsLoaded] = useState(false);
   const [initialBrandSnapshot, setInitialBrandSnapshot] = useState(null);
@@ -136,6 +154,7 @@ export default function AdminProductFormView({
     setCategoryId(prod.categoryId != null ? String(prod.categoryId) : '');
     setHadNullCategoryOnLoad(prod.categoryId == null);
     setBrandId(prod.brandId != null ? String(prod.brandId) : '');
+    setGender(prod.gender || 'UNISEX');
     setInitialBrandSnapshot(
       prod.brandId != null
         ? {
@@ -206,14 +225,30 @@ export default function AdminProductFormView({
         setBrandsLoaded(true);
         if (Array.isArray(cats) && cats.length > 0) {
           setCategoryId(String(cats[0].id));
+          const firstCatIsSneakers = isSneakersCategory(cats[0]);
+          if (firstCatIsSneakers) {
+            setVariants([
+              { localKey: 'new-8', id: null, size: '8', stock: 5, isActive: true },
+              { localKey: 'new-8.5', id: null, size: '8.5', stock: 8, isActive: true },
+              { localKey: 'new-9', id: null, size: '9', stock: 5, isActive: true },
+            ]);
+          } else {
+            setVariants([
+              { localKey: 'new-S', id: null, size: 'S', stock: 5, isActive: true },
+              { localKey: 'new-M', id: null, size: 'M', stock: 8, isActive: true },
+              { localKey: 'new-L', id: null, size: 'L', stock: 5, isActive: true },
+            ]);
+          }
+        } else {
+          // Default initial sizes for new product creation
+          setVariants([
+            { localKey: 'new-S', id: null, size: 'S', stock: 5, isActive: true },
+            { localKey: 'new-M', id: null, size: 'M', stock: 8, isActive: true },
+            { localKey: 'new-L', id: null, size: 'L', stock: 5, isActive: true },
+          ]);
         }
         setBrandId('');
-        // Default initial sizes for new product creation
-        setVariants([
-          { localKey: 'new-S', id: null, size: 'S', stock: 5, isActive: true },
-          { localKey: 'new-M', id: null, size: 'M', stock: 8, isActive: true },
-          { localKey: 'new-L', id: null, size: 'L', stock: 5, isActive: true },
-        ]);
+        setGender('UNISEX');
         setVariantsDirty(true);
       }
     } catch (err) {
@@ -270,6 +305,9 @@ export default function AdminProductFormView({
   const isCurrentBrandInactive = Boolean(
     currentProductBrandInList && currentProductBrandInList.isActive === false
   );
+
+  const selectedCategoryObj = categories.find((c) => String(c.id) === String(categoryId));
+  const isSneakers = isSneakersCategory(selectedCategoryObj);
 
   // Switch between Multi-size and Single-size ('Único' / 'One Size')
   const handleSwitchSizingMode = (nextMode) => {
@@ -370,9 +408,16 @@ export default function AdminProductFormView({
 
   const handleAddVariant = (sizeToAdd, stockToAdd = newVariantStock) => {
     setVariantFeedbackError(null);
-    const normalized = String(sizeToAdd || '').trim();
+    let normalized = String(sizeToAdd || '').trim();
+    if (isSneakers) {
+      normalized = normalizeSneakerSizeValue(normalized);
+    }
     if (!normalized) {
-      setVariantFeedbackError('Ingresá el nombre del talle (ej. S, M, L, 42).');
+      setVariantFeedbackError(
+        isSneakers
+          ? 'Ingresá un talle US numérico (ej. 7, 7.5, 8.5).'
+          : 'Ingresá el nombre del talle (ej. S, M, L, 42).'
+      );
       return;
     }
     if (normalized.length > 50) {
@@ -386,7 +431,9 @@ export default function AdminProductFormView({
     const duplicateActive = variants.find(
       (v) =>
         v.isActive !== false &&
-        v.size.trim().toUpperCase() === normalized.toUpperCase()
+        (isSneakers
+          ? normalizeSneakerSizeValue(v.size) === normalized
+          : v.size.trim().toUpperCase() === normalized.toUpperCase())
     );
     if (duplicateActive) {
       setVariantFeedbackError(
@@ -399,7 +446,9 @@ export default function AdminProductFormView({
     const existingInactive = variants.find(
       (v) =>
         v.isActive === false &&
-        v.size.trim().toUpperCase() === normalized.toUpperCase()
+        (isSneakers
+          ? normalizeSneakerSizeValue(v.size) === normalized
+          : v.size.trim().toUpperCase() === normalized.toUpperCase())
     );
     if (existingInactive) {
       setVariants((prev) =>
@@ -761,7 +810,9 @@ export default function AdminProductFormView({
       const seenActive = new Set();
       for (const v of variants) {
         if (v.isActive !== false) {
-          const key = v.size.trim().toUpperCase();
+          const key = isSneakers
+            ? normalizeSneakerSizeValue(v.size)
+            : v.size.trim().toUpperCase();
           if (seenActive.has(key)) {
             setFormError(
               `No pueden existir dos variantes activas con el mismo talle ("${v.size.trim()}").`
@@ -783,10 +834,13 @@ export default function AdminProductFormView({
         price: numericPrice,
         categoryId: numericCategoryId,
         brandId: brandId && brandId.trim() !== '' ? Number(brandId) : null,
+        gender: gender || 'UNISEX',
         variants: shouldSendVariants
           ? variants.map((v) => ({
             id: v.id != null ? Number(v.id) : undefined,
-            size: v.size.trim(),
+            size: isSneakers && v.id == null
+              ? normalizeSneakerSizeValue(v.size.trim())
+              : v.size.trim(),
             stock: Math.max(0, Number(v.stock) || 0),
             isActive: v.isActive !== false,
           }))
@@ -960,8 +1014,8 @@ export default function AdminProductFormView({
                 {isEdit && (
                   <span
                     className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider border rounded-xs ${isActiveProduct
-                        ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                        : 'bg-brand-dark/[0.06] text-brand-dark/65 border-brand-dark/15'
+                      ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                      : 'bg-brand-dark/[0.06] text-brand-dark/65 border-brand-dark/15'
                       }`}
                   >
                     <span
@@ -1002,8 +1056,8 @@ export default function AdminProductFormView({
                     }
                   }}
                   className={`px-3.5 py-2 text-xs font-semibold uppercase tracking-wider border rounded-xs transition-colors cursor-pointer ${isActiveProduct
-                      ? 'border-red-200 text-red-800 bg-white hover:bg-red-50'
-                      : 'border-emerald-300 text-emerald-900 bg-emerald-50 hover:bg-emerald-100'
+                    ? 'border-red-200 text-red-800 bg-white hover:bg-red-50'
+                    : 'border-emerald-300 text-emerald-900 bg-emerald-50 hover:bg-emerald-100'
                     }`}
                 >
                   {isTogglingStatus
@@ -1017,8 +1071,8 @@ export default function AdminProductFormView({
                 type="submit"
                 disabled={isSaving || (categoriesLoaded && categories.length === 0)}
                 className={`px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] rounded-xs transition-opacity ${isSaving || (categoriesLoaded && categories.length === 0)
-                    ? 'bg-brand-dark/40 cursor-not-allowed'
-                    : 'bg-brand-dark hover:opacity-90 cursor-pointer'
+                  ? 'bg-brand-dark/40 cursor-not-allowed'
+                  : 'bg-brand-dark hover:opacity-90 cursor-pointer'
                   }`}
               >
                 {isSaving
@@ -1192,8 +1246,8 @@ export default function AdminProductFormView({
                     )}
                   </div>
 
-                  {/* Taxonomy Row: Category & Brand */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Taxonomy Row: Category, Brand & Gender */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     {/* Category Selector */}
                     <div className="space-y-1.5">
                       <label
@@ -1305,6 +1359,32 @@ export default function AdminProductFormView({
                         </p>
                       )}
                     </div>
+
+                    {/* Gender Selector */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <label
+                          htmlFor="product-gender"
+                          className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
+                        >
+                          Género <span className="text-red-600">*</span>
+                        </label>
+                      </div>
+                      <select
+                        id="product-gender"
+                        disabled={isSaving}
+                        value={gender}
+                        onChange={(e) => setGender(e.target.value)}
+                        className="form-select w-full h-11 pl-3.5 pr-9 text-base sm:text-sm"
+                      >
+                        <option value="UNISEX">Unisex (UNISEX)</option>
+                        <option value="MEN">Hombre (MEN)</option>
+                        <option value="WOMEN">Mujer (WOMEN)</option>
+                      </select>
+                      <p className="text-[11px] text-brand-dark/50">
+                        Clasificación para filtros del catálogo.
+                      </p>
+                    </div>
                   </div>
 
                   {/* Description */}
@@ -1381,8 +1461,8 @@ export default function AdminProductFormView({
                       type="button"
                       onClick={() => handleSwitchSizingMode('multi')}
                       className={`p-3 text-left border rounded-xs transition-colors cursor-pointer ${sizingMode === 'multi'
-                          ? 'bg-brand-dark text-[#FAFAFA] border-brand-dark'
-                          : 'bg-white text-brand-dark border-brand-dark/15 hover:border-brand-dark'
+                        ? 'bg-brand-dark text-[#FAFAFA] border-brand-dark'
+                        : 'bg-white text-brand-dark border-brand-dark/15 hover:border-brand-dark'
                         }`}
                     >
                       <span className="block text-xs font-bold uppercase tracking-wider">
@@ -1390,8 +1470,8 @@ export default function AdminProductFormView({
                       </span>
                       <span
                         className={`block text-[11px] mt-0.5 ${sizingMode === 'multi'
-                            ? 'text-[#FAFAFA]/75'
-                            : 'text-brand-dark/55'
+                          ? 'text-[#FAFAFA]/75'
+                          : 'text-brand-dark/55'
                           }`}
                       >
                         El comprador elige su talle en la página del producto.
@@ -1402,8 +1482,8 @@ export default function AdminProductFormView({
                       type="button"
                       onClick={() => handleSwitchSizingMode('single')}
                       className={`p-3 text-left border rounded-xs transition-colors cursor-pointer ${sizingMode === 'single'
-                          ? 'bg-brand-dark text-[#FAFAFA] border-brand-dark'
-                          : 'bg-white text-brand-dark border-brand-dark/15 hover:border-brand-dark'
+                        ? 'bg-brand-dark text-[#FAFAFA] border-brand-dark'
+                        : 'bg-white text-brand-dark border-brand-dark/15 hover:border-brand-dark'
                         }`}
                     >
                       <span className="block text-xs font-bold uppercase tracking-wider">
@@ -1411,8 +1491,8 @@ export default function AdminProductFormView({
                       </span>
                       <span
                         className={`block text-[11px] mt-0.5 ${sizingMode === 'single'
-                            ? 'text-[#FAFAFA]/75'
-                            : 'text-brand-dark/55'
+                          ? 'text-[#FAFAFA]/75'
+                          : 'text-brand-dark/55'
                           }`}
                       >
                         Usa una variante única sin pedir selección de talle en tienda.
@@ -1507,20 +1587,20 @@ export default function AdminProductFormView({
                     <div className="p-4 bg-white border border-brand-dark/12 rounded-xs space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75">
-                          Agregar talle
+                          {isSneakers ? 'Agregar talle US' : 'Agregar talle'}
                         </span>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[10px] text-brand-dark/45 uppercase mr-1">
                             Rápido:
                           </span>
-                          {QUICK_SIZES.map((sz) => (
+                          {(isSneakers ? QUICK_SNEAKER_SIZES : QUICK_SIZES).map((sz) => (
                             <button
                               key={sz}
                               type="button"
                               onClick={() => handleAddVariant(sz, newVariantStock)}
                               className="px-2 py-1 text-[11px] font-semibold uppercase border border-brand-dark/15 bg-[#FAF9F6] hover:border-brand-dark rounded-xs cursor-pointer"
                             >
-                              + {sz}
+                              + {sz}{isSneakers ? 'us' : ''}
                             </button>
                           ))}
                         </div>
@@ -1532,7 +1612,9 @@ export default function AdminProductFormView({
                             htmlFor="new-variant-size"
                             className="block text-[10px] font-semibold uppercase tracking-wider text-brand-dark/55"
                           >
-                            Talle (ej. S, M, L, XL, 41, Único)
+                            {isSneakers
+                              ? 'Talle US (ej. 7, 7.5, 8.5)'
+                              : 'Talle (ej. S, M, L, XL, 41, Único)'}
                           </label>
                           <input
                             id="new-variant-size"
@@ -1547,7 +1629,11 @@ export default function AdminProductFormView({
                                 handleAddVariant(newVariantSize, newVariantStock);
                               }
                             }}
-                            placeholder="Ingresá un talle..."
+                            placeholder={
+                              isSneakers
+                                ? 'Ingresá talle US (ej. 7, 7.5, 8.5)...'
+                                : 'Ingresá un talle...'
+                            }
                             className="form-input w-full h-9 px-3 text-base sm:text-xs"
                           />
                         </div>
@@ -1632,7 +1718,7 @@ export default function AdminProductFormView({
                                 )}
                                 <div>
                                   <span className="block text-xs font-semibold text-brand-dark">
-                                    Talle {v.size}
+                                    {isSneakers ? `Talle US ${v.size}` : `Talle ${v.size}`}
                                   </span>
                                   <span className="block font-mono text-[10px] text-brand-dark/45">
                                     {v.id != null
@@ -1721,7 +1807,7 @@ export default function AdminProductFormView({
                             </span>
                             <div>
                               <span className="block text-xs font-semibold text-brand-dark/70">
-                                Talle {v.size} (Inactiva)
+                                {isSneakers ? `Talle US ${v.size} (Inactiva)` : `Talle ${v.size} (Inactiva)`}
                               </span>
                               <span className="block font-mono text-[10px] text-brand-dark/45">
                                 {v.id != null
@@ -1806,8 +1892,8 @@ export default function AdminProductFormView({
                             <div
                               key={img.id || idx}
                               className={`bg-white border rounded-xs overflow-hidden flex flex-col justify-between ${isPrimary
-                                  ? 'border-brand-dark ring-1 ring-brand-dark'
-                                  : 'border-brand-dark/12'
+                                ? 'border-brand-dark ring-1 ring-brand-dark'
+                                : 'border-brand-dark/12'
                                 }`}
                             >
                               <div className="aspect-[4/5] w-full bg-[#F2F2F0] relative overflow-hidden">
@@ -2014,8 +2100,8 @@ export default function AdminProductFormView({
                     isSaving || (categoriesLoaded && categories.length === 0)
                   }
                   className={`w-full min-h-[48px] px-5 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] rounded-xs transition-opacity ${isSaving || (categoriesLoaded && categories.length === 0)
-                      ? 'bg-brand-dark/40 cursor-not-allowed'
-                      : 'bg-brand-dark hover:opacity-90 cursor-pointer'
+                    ? 'bg-brand-dark/40 cursor-not-allowed'
+                    : 'bg-brand-dark hover:opacity-90 cursor-pointer'
                     }`}
                 >
                   {isSaving

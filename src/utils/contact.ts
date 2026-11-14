@@ -2,7 +2,7 @@
  * Centralized Store Contact & Social Media Configuration for The Office BA
  */
 
-const DEFAULT_WHATSAPP_PHONE = '541136823069';
+const DEFAULT_WHATSAPP_PHONE = '541127081425';
 
 export function getWhatsappPhone(): string {
   if (

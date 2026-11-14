@@ -5,16 +5,49 @@ import Layout from '../layouts/Layout.astro';
 <Layout
   title="Página no encontrada — The Office BA"
   description="La página o producto que estás buscando no existe o fue trasladado."
+  noCanonical={true}
 >
   <script is:inline>
     (function () {
       if (typeof window === 'undefined') return;
       var path = window.location.pathname || '';
+      var search = window.location.search || '';
+      var hash = window.location.hash || '';
+
+      // 1. Admin Orders fallback
       var orderMatch = path.match(/^\/admin\/orders\/([^/?#]+)\/?$/);
       if (orderMatch && orderMatch[1] && orderMatch[1].toLowerCase() !== 'detail') {
         window.location.replace(
-          '/admin/orders/detail?id=' + encodeURIComponent(orderMatch[1])
+          '/admin/orders/detail?id=' + encodeURIComponent(orderMatch[1]) + (search ? '&' + search.slice(1) : '') + hash
         );
+        return;
+      }
+
+      // 2. Admin Inquiries fallback
+      var inqMatch = path.match(/^\/admin\/inquiries\/([^/?#]+)\/?$/);
+      if (inqMatch && inqMatch[1] && inqMatch[1].toLowerCase() !== 'fallback') {
+        window.location.replace(
+          '/admin/inquiries/fallback?id=' + encodeURIComponent(inqMatch[1]) + (search ? '&' + search.slice(1) : '') + hash
+        );
+        return;
+      }
+
+      // 3. Admin Product Edit fallback
+      var prodEditMatch = path.match(/^\/admin\/products\/([^/?#]+)\/edit\/?$/);
+      if (prodEditMatch && prodEditMatch[1] && prodEditMatch[1].toLowerCase() !== 'fallback-edit') {
+        window.location.replace(
+          '/admin/products/fallback-edit?id=' + encodeURIComponent(prodEditMatch[1]) + (search ? '&' + search.slice(1) : '') + hash
+        );
+        return;
+      }
+
+      // 4. Public Product Detail fallback
+      var productMatch = path.match(/^\/products\/([^/?#]+)\/?$/);
+      if (productMatch && productMatch[1] && productMatch[1].toLowerCase() !== 'fallback') {
+        window.location.replace(
+          '/products/fallback?id=' + encodeURIComponent(productMatch[1]) + (search ? '&' + search.slice(1) : '') + hash
+        );
+        return;
       }
     })();
   </script>

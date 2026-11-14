@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useCart } from '../../store/cartStore';
+import { formatProductSize } from '../../services/api';
 
 const SINGLE_SIZE_LABELS = new Set([
   'unico',
@@ -79,7 +80,7 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
     if (newStock <= 0) {
       setQuantity(1);
       setValidationError(
-        `El talle ${variant.size} se encuentra agotado (0 unidades disponibles).`
+        `El talle ${formatProductSize(variant.size, product)} se encuentra agotado (0 unidades disponibles).`
       );
       return;
     }
@@ -119,7 +120,7 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
       setValidationError(
         isSingleSizeProduct
           ? 'Este artículo se encuentra agotado (0 unidades disponibles).'
-          : `El talle ${selectedVariant.size} se encuentra agotado (0 unidades disponibles).`
+          : `El talle ${formatProductSize(selectedVariant.size, product)} se encuentra agotado (0 unidades disponibles).`
       );
       setAddedFeedback(null);
       return;
@@ -142,14 +143,15 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
     const accumulatedQty = currentQtyInCart + safeQty;
     if (accumulatedQty > selectedStock) {
       const remaining = Math.max(0, selectedStock - currentQtyInCart);
+      const displaySize = formatProductSize(selectedVariant.size, product);
       setValidationError(
         currentQtyInCart > 0
           ? remaining > 0
             ? `No se puede superar el stock disponible (${selectedStock} ${selectedStock === 1 ? 'unidad' : 'unidades'
-            } en ${isSingleSizeProduct ? 'total' : `talle ${selectedVariant.size}`
+            } en ${isSingleSizeProduct ? 'total' : `talle ${displaySize}`
             }). Ya tenés ${currentQtyInCart} en tu carrito; podés agregar hasta ${remaining} más.`
             : `Alcanzaste el límite de stock disponible (${selectedStock} ${selectedStock === 1 ? 'unidad' : 'unidades'
-            } en ${isSingleSizeProduct ? 'total' : `talle ${selectedVariant.size}`
+            } en ${isSingleSizeProduct ? 'total' : `talle ${displaySize}`
             }). Ya tenés el total disponible en tu carrito.`
           : `La cantidad seleccionada (${safeQty}) supera el stock disponible (${selectedStock} ${selectedStock === 1 ? 'unidad' : 'unidades'
           }).`
@@ -219,7 +221,7 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
               Presentación del artículo
             </span>
             <span className="font-semibold text-brand-dark uppercase tracking-wide">
-              Talle {variants[0].size} (Sin selección de talle requerida)
+              Talle {formatProductSize(variants[0].size, product)} (Sin selección de talle requerida)
             </span>
           </div>
           <span
@@ -239,7 +241,7 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
             </span>
             {selectedVariant && (
               <span className="font-medium text-brand-dark">
-                Talle {selectedVariant.size}
+                Talle {formatProductSize(selectedVariant.size, product)}
                 {isSelectedOutOfStock ? (
                   <span className="text-red-700 ml-1.5 font-semibold uppercase text-[11px]">
                     (Agotado)
@@ -277,7 +279,7 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
                         : 'bg-white/80 text-brand-dark border-brand-dark/15 hover:border-brand-dark hover:bg-white'
                     }`}
                 >
-                  <span>{variant.size}</span>
+                  <span>{formatProductSize(variant.size, product)}</span>
                   {isOutOfStock ? (
                     <span className="text-[9px] font-normal tracking-normal leading-none mt-0.5 no-underline">
                       Agotado
@@ -420,7 +422,7 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
               <p className="font-semibold text-brand-dark">
                 {addedFeedback.isSingleSize
                   ? `Agregado a tu bolsa (${addedFeedback.size})`
-                  : `Agregado a tu bolsa — Talle ${addedFeedback.size}`}
+                  : `Agregado a tu bolsa — Talle ${formatProductSize(addedFeedback.size, product)}`}
               </p>
               <p className="text-[11px] text-brand-dark/65">
                 Sumaste {addedFeedback.addedQuantity}{' '}

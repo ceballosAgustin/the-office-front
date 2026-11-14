@@ -27,7 +27,11 @@ function resolveClientOrderId(propOrderId) {
   return null;
 }
 
-export default function AdminOrderDetailView({ orderId: propOrderId }) {
+/**
+ * @param {Object} [props]
+ * @param {string|number} [props.orderId]
+ */
+export default function AdminOrderDetailView({ orderId: propOrderId = null } = {}) {
   const [resolvedOrderId, setResolvedOrderId] = useState(() =>
     resolveClientOrderId(propOrderId)
   );

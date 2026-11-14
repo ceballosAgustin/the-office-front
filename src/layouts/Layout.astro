@@ -6,12 +6,34 @@ import { WHATSAPP_CONTACT_URL, SOCIAL_LINKS } from "../utils/contact";
 interface Props {
   title?: string;
   description?: string;
+  image?: string;
+  canonicalPath?: string;
+  noCanonical?: boolean;
 }
 
 const {
   title = "The Office BA — Friends and Family",
   description = "Colección de indumentaria urbana contemporánea. Siluetas estructuradas, telas pesadas y calzado curado. Envíos a todo el país.",
+  image,
+  canonicalPath,
+  noCanonical = false,
 } = Astro.props;
+
+// Canonical domain is strictly the apex domain https://theofficeba.ar
+const canonicalOrigin = Astro.site ? Astro.site.origin : "https://theofficeba.ar";
+
+// Clean pathname without trailing slash (except root) and strictly without query params or hash
+const rawPath = canonicalPath || Astro.url.pathname;
+const cleanPath = rawPath === "/" ? "" : rawPath.replace(/\/+$/, "");
+
+// Do not generate build-time canonical or og:url for fallback templates or when explicitly disabled
+const isFallbackTemplate = noCanonical || rawPath.toLowerCase().includes("/fallback");
+const canonicalUrl = !isFallbackTemplate ? `${canonicalOrigin}${cleanPath || "/"}` : null;
+
+// Open Graph / Twitter image: only when a valid, appropriate image is provided
+const socialImage = image && image.trim().length > 0
+  ? (image.startsWith("http") ? image.trim() : `${canonicalOrigin}${image.startsWith("/") ? "" : "/"}${image.trim()}`)
+  : null;
 ---
 
 <!doctype html>
@@ -34,6 +56,23 @@ const {
     <meta name="theme-color" content="#FAFAFA" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
+
+    <!-- Canonical URL -->
+    {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    {canonicalUrl && <meta property="og:url" content={canonicalUrl} />}
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:site_name" content="The Office BA" />
+    {socialImage && <meta property="og:image" content={socialImage} />}
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content={socialImage ? "summary_large_image" : "summary"} />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    {socialImage && <meta name="twitter:image" content={socialImage} />}
   </head>
   <body
     class="flex flex-col min-h-screen selection:bg-brand-dark selection:text-[#FAFAFA]"

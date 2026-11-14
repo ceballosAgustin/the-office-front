@@ -1,2 +1,5 @@
-/admin/orders/* /admin/orders/detail/index.html 200
-
+# The Office BA - SPA rewrites for dynamic routes on static hosting (Netlify, Cloudflare Pages)
+/admin/orders/*         /admin/orders/detail/index.html      200
+/admin/inquiries/*      /admin/inquiries/fallback/index.html 200
+/admin/products/*/edit  /admin/products/fallback-edit/index.html 200
+/products/*             /products/fallback/index.html        200

@@ -5,13 +5,8 @@ import { getAllProductPaths } from "../../services/api";
 
 export async function getStaticPaths() {
   const dynamicIds = await getAllProductPaths();
-  const fallbackIds = Array.from({ length: 50 }, (_, i) => String(i + 1));
-  const uniqueIds = Array.from(
-    new Set([...dynamicIds.map(String), ...fallbackIds]),
-  );
-
-  return uniqueIds.map((id) => ({
-    params: { id },
+  return dynamicIds.map((id) => ({
+    params: { id: String(id) },
   }));
 }
 
@@ -21,6 +16,7 @@ const { id } = Astro.params;
 <Layout
   title={`Detalle de Producto #${id} — The Office BA`}
   description="Prenda exclusiva de la colección The Office BA. Calce contemporáneo, confección estructurada y despacho seguro."
+  canonicalPath={`/products/${id}`}
 >
   <ProductDetailView client:load productId={id} />
 </Layout>

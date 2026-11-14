@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { fetchProducts } from '../../services/api';
+import { fetchProducts, buildCatalogHref, parseCatalogParams } from '../../services/api';
 
 const MIN_SEARCH_LENGTH = 2;
 const DEBOUNCE_MS = 280;
@@ -25,16 +25,14 @@ export default function NavbarSearch() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const initialParams = new URLSearchParams(window.location.search);
-    const initialSearch = initialParams.get('search')?.trim() || '';
-    if (initialSearch) {
-      setQuery(initialSearch);
+    const initialParams = parseCatalogParams(window.location.search);
+    if (initialParams.search) {
+      setQuery(initialParams.search);
     }
 
     const syncFromUrl = () => {
-      const params = new URLSearchParams(window.location.search);
-      const urlSearch = params.get('search')?.trim() || '';
-      setQuery(urlSearch);
+      const currentParams = parseCatalogParams(window.location.search);
+      setQuery(currentParams.search || '');
     };
 
     window.addEventListener('popstate', syncFromUrl);
@@ -201,8 +199,18 @@ export default function NavbarSearch() {
   };
 
   const buildCatalogSearchHref = () => {
-    if (!trimmedQuery) return '/#catalogo';
-    return `/?search=${encodeURIComponent(trimmedQuery)}#catalogo`;
+    if (typeof window !== 'undefined') {
+      const currentFilters = parseCatalogParams(window.location.search);
+      return buildCatalogHref({
+        category: currentFilters.category,
+        categoryId: currentFilters.categoryId,
+        brand: currentFilters.brand,
+        gender: currentFilters.gender,
+        size: currentFilters.size,
+        search: trimmedQuery || null,
+      });
+    }
+    return buildCatalogHref({ search: trimmedQuery || null });
   };
 
   const navigateToCatalogSearch = (event) => {
@@ -212,29 +220,29 @@ export default function NavbarSearch() {
     }
     if (!trimmedQuery) return;
 
-    const targetHref = buildCatalogSearchHref();
     setIsOpen(false);
     setActiveIndex(-1);
 
     if (typeof window !== 'undefined') {
-      if (window.location.pathname === '/') {
-        const currentParams = new URLSearchParams(window.location.search);
-        const catId = currentParams.get('categoryId');
-        const nextParams = new URLSearchParams();
-        if (catId) {
-          nextParams.set('categoryId', catId);
-        }
-        nextParams.set('search', trimmedQuery);
-        const nextUrl = `/?${nextParams.toString()}#catalogo`;
+      const currentFilters = parseCatalogParams(window.location.search);
+      const nextHref = buildCatalogHref({
+        category: currentFilters.category,
+        categoryId: currentFilters.categoryId,
+        brand: currentFilters.brand,
+        gender: currentFilters.gender,
+        size: currentFilters.size,
+        search: trimmedQuery,
+      });
 
-        window.history.pushState({}, '', nextUrl);
+      if (window.location.pathname === '/' || window.location.pathname === '') {
+        window.history.pushState({}, '', nextHref);
         window.dispatchEvent(new CustomEvent('the-office:catalog-url-change'));
         const catalogEl = document.getElementById('catalogo');
         if (catalogEl) {
           catalogEl.scrollIntoView({ behavior: 'smooth' });
         }
       } else {
-        window.location.assign(targetHref);
+        window.location.assign(nextHref);
       }
     }
   };

@@ -74,9 +74,10 @@ export default function AdminNavigationView() {
   const [addItemModal, setAddItemModal] = useState({
     isOpen: false,
     section: null,
-    targetType: 'CATEGORY', // 'BRAND' | 'CATEGORY' | 'CUSTOM_LINK'
+    targetType: 'CATEGORY', // 'BRAND' | 'CATEGORY' | 'CUSTOM_LINK' | 'PRODUCT_FILTER'
     brandId: '',
     categoryId: '',
+    gender: '',
     customUrl: '',
     label: '',
     columnIndex: 0,
@@ -92,6 +93,9 @@ export default function AdminNavigationView() {
     item: null,
     label: '',
     customUrl: '',
+    brandId: '',
+    categoryId: '',
+    gender: '',
     columnIndex: 0,
     isVisible: true,
     isSubmitting: false,
@@ -382,6 +386,7 @@ export default function AdminNavigationView() {
       targetType: isBrands ? 'BRAND' : 'CATEGORY',
       brandId: '',
       categoryId: '',
+      gender: '',
       customUrl: '',
       label: '',
       columnIndex: defaultColumnIndex,
@@ -400,7 +405,7 @@ export default function AdminNavigationView() {
     e.preventDefault();
     if (addItemModal.isSubmitting) return;
 
-    const { section, targetType, brandId, categoryId, customUrl, label, columnIndex, isVisible } =
+    const { section, targetType, brandId, categoryId, gender, customUrl, label, columnIndex, isVisible } =
       addItemModal;
     const isBrands = section.code?.toLowerCase() === BRANDS_SECTION_CODE;
 
@@ -446,6 +451,24 @@ export default function AdminNavigationView() {
         setAddItemModal((prev) => ({ ...prev, error: 'Debes seleccionar una categoría.' }));
         return;
       }
+    } else if (targetType === 'PRODUCT_FILTER') {
+      if (!label.trim()) {
+        setAddItemModal((prev) => ({
+          ...prev,
+          error: 'La etiqueta (nombre visible) es obligatoria para un filtro de productos.',
+        }));
+        return;
+      }
+      const hasCat = Boolean(categoryId);
+      const hasBrand = Boolean(brandId);
+      const hasGender = Boolean(gender);
+      if (!hasCat && !hasBrand && !hasGender) {
+        setAddItemModal((prev) => ({
+          ...prev,
+          error: 'Debes seleccionar al menos un criterio para el filtro (Categoría, Marca o Género).',
+        }));
+        return;
+      }
     } else if (targetType === 'CUSTOM_LINK') {
       if (!label.trim()) {
         setAddItemModal((prev) => ({
@@ -468,10 +491,11 @@ export default function AdminNavigationView() {
         targetType,
         columnIndex: Number(columnIndex),
         isVisible,
-        brandId: targetType === 'BRAND' ? Number(brandId) : null,
-        categoryId: targetType === 'CATEGORY' ? Number(categoryId) : null,
+        brandId: (targetType === 'BRAND' || targetType === 'PRODUCT_FILTER') && brandId ? Number(brandId) : null,
+        categoryId: (targetType === 'CATEGORY' || targetType === 'PRODUCT_FILTER') && categoryId ? Number(categoryId) : null,
+        gender: targetType === 'PRODUCT_FILTER' && gender ? gender.trim().toUpperCase() : null,
         customUrl: targetType === 'CUSTOM_LINK' ? customUrl.trim() : null,
-        label: targetType === 'CATEGORY' && label.trim() ? label.trim() : targetType === 'CUSTOM_LINK' ? label.trim() : null,
+        label: label.trim() || null,
       };
 
       await createAdminNavigationItem(section.id, payload);
@@ -495,6 +519,9 @@ export default function AdminNavigationView() {
       item,
       label: item.label || '',
       customUrl: item.customUrl || '',
+      brandId: item.brandId ? String(item.brandId) : '',
+      categoryId: item.categoryId ? String(item.categoryId) : '',
+      gender: item.gender || '',
       columnIndex: item.columnIndex ?? 0,
       isVisible: Boolean(item.isVisible),
       isSubmitting: false,
@@ -511,7 +538,7 @@ export default function AdminNavigationView() {
     e.preventDefault();
     if (editItemModal.isSubmitting) return;
 
-    const { section, item, label, customUrl, columnIndex, isVisible } = editItemModal;
+    const { section, item, label, customUrl, brandId, categoryId, gender, columnIndex, isVisible } = editItemModal;
     const isBrands = section.code?.toLowerCase() === BRANDS_SECTION_CODE;
 
     if (item.targetType === 'CUSTOM_LINK') {
@@ -525,6 +552,24 @@ export default function AdminNavigationView() {
       const urlCheck = validateCustomUrl(customUrl);
       if (!urlCheck.valid) {
         setEditItemModal((prev) => ({ ...prev, error: urlCheck.error }));
+        return;
+      }
+    } else if (item.targetType === 'PRODUCT_FILTER') {
+      if (!label.trim()) {
+        setEditItemModal((prev) => ({
+          ...prev,
+          error: 'La etiqueta (nombre visible) es obligatoria.',
+        }));
+        return;
+      }
+      const hasCat = Boolean(categoryId);
+      const hasBrand = Boolean(brandId);
+      const hasGender = Boolean(gender);
+      if (!hasCat && !hasBrand && !hasGender) {
+        setEditItemModal((prev) => ({
+          ...prev,
+          error: 'Debes seleccionar al menos un criterio para el filtro (Categoría, Marca o Género).',
+        }));
         return;
       }
     }
@@ -546,8 +591,13 @@ export default function AdminNavigationView() {
         targetType: item.targetType,
         columnIndex: Number(columnIndex),
         isVisible,
-        brandId: item.brandId,
-        categoryId: item.categoryId,
+        brandId: (item.targetType === 'BRAND' || item.targetType === 'PRODUCT_FILTER')
+          ? (brandId ? Number(brandId) : null)
+          : null,
+        categoryId: (item.targetType === 'CATEGORY' || item.targetType === 'PRODUCT_FILTER')
+          ? (categoryId ? Number(categoryId) : null)
+          : null,
+        gender: item.targetType === 'PRODUCT_FILTER' && gender ? gender.trim().toUpperCase() : null,
         customUrl: item.targetType === 'CUSTOM_LINK' ? customUrl.trim() : null,
         label: label.trim() || null,
       };
@@ -801,11 +851,10 @@ export default function AdminNavigationView() {
                 Navbar Navigation Editor
               </h1>
               <span
-                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold tracking-wider font-mono ${
-                  visibleSectionsCount >= MAX_VISIBLE_SECTIONS
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold tracking-wider font-mono ${visibleSectionsCount >= MAX_VISIBLE_SECTIONS
                     ? 'bg-amber-100 text-amber-800'
                     : 'bg-brand-dark/[0.06] text-brand-dark/80'
-                }`}
+                  }`}
                 title="Límite máximo de secciones visibles en el navbar: 5"
               >
                 Secciones visibles: {visibleSectionsCount} / {MAX_VISIBLE_SECTIONS}
@@ -973,11 +1022,10 @@ export default function AdminNavigationView() {
               return (
                 <div
                   key={section.id}
-                  className={`border transition-all duration-200 rounded-xs bg-white ${
-                    section.isVisible
+                  className={`border transition-all duration-200 rounded-xs bg-white ${section.isVisible
                       ? 'border-brand-dark/[0.12] shadow-2xs'
                       : 'border-brand-dark/[0.06] bg-brand-dark/[0.015] opacity-90'
-                  }`}
+                    }`}
                 >
                   {/* Section Header Card */}
                   <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1020,11 +1068,10 @@ export default function AdminNavigationView() {
                             </span>
                           )}
                           <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider font-mono ${
-                              section.isVisible
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider font-mono ${section.isVisible
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : 'bg-gray-100 text-gray-600'
-                            }`}
+                              }`}
                           >
                             {section.isVisible ? '● Visible en Navbar' : '○ Oculta'}
                           </span>
@@ -1058,17 +1105,16 @@ export default function AdminNavigationView() {
                         type="button"
                         onClick={() => handleToggleSectionStatus(section)}
                         disabled={statusUpdatingSectionId === section.id}
-                        className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-xs border transition-colors cursor-pointer ${
-                          section.isVisible
+                        className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-xs border transition-colors cursor-pointer ${section.isVisible
                             ? 'border-amber-300 text-amber-800 hover:bg-amber-50'
                             : 'border-emerald-300 text-emerald-800 hover:bg-emerald-50'
-                        } disabled:opacity-50`}
+                          } disabled:opacity-50`}
                       >
                         {statusUpdatingSectionId === section.id
                           ? 'Actualizando...'
                           : section.isVisible
-                          ? 'Ocultar'
-                          : 'Activar'}
+                            ? 'Ocultar'
+                            : 'Activar'}
                       </button>
 
                       {/* Edit Button */}
@@ -1099,9 +1145,8 @@ export default function AdminNavigationView() {
                         <span>{isExpanded ? 'Contraer' : 'Gestionar'}</span>
                         <span className="text-[10px]">({items.length})</span>
                         <svg
-                          className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                            isExpanded ? 'rotate-180' : ''
-                          }`}
+                          className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''
+                            }`}
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -1177,11 +1222,10 @@ export default function AdminNavigationView() {
                                     .map((item, itemIdx, arr) => (
                                       <div
                                         key={item.id}
-                                        className={`p-2.5 rounded-xs border text-xs flex items-center justify-between gap-2 ${
-                                          item.isVisible
+                                        className={`p-2.5 rounded-xs border text-xs flex items-center justify-between gap-2 ${item.isVisible
                                             ? 'bg-white border-brand-dark/[0.1]'
                                             : 'bg-brand-dark/[0.02] border-brand-dark/[0.05] opacity-75'
-                                        }`}
+                                          }`}
                                       >
                                         {/* Left: Reorder & Name */}
                                         <div className="flex items-center gap-2 min-w-0">
@@ -1212,11 +1256,10 @@ export default function AdminNavigationView() {
                                                 {item.brandName || item.label}
                                               </span>
                                               <span
-                                                className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded-full ${
-                                                  item.isVisible
+                                                className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded-full ${item.isVisible
                                                     ? 'bg-emerald-100 text-emerald-800'
                                                     : 'bg-gray-100 text-gray-600'
-                                                }`}
+                                                  }`}
                                               >
                                                 {item.isVisible ? 'Visible' : 'Oculta'}
                                               </span>
@@ -1293,11 +1336,10 @@ export default function AdminNavigationView() {
                                     .map((item, itemIdx, arr) => (
                                       <div
                                         key={item.id}
-                                        className={`p-2.5 rounded-xs border text-xs flex items-center justify-between gap-2 ${
-                                          item.isVisible
+                                        className={`p-2.5 rounded-xs border text-xs flex items-center justify-between gap-2 ${item.isVisible
                                             ? 'bg-white border-brand-dark/[0.1]'
                                             : 'bg-brand-dark/[0.02] border-brand-dark/[0.05] opacity-75'
-                                        }`}
+                                          }`}
                                       >
                                         {/* Left: Reorder & Name */}
                                         <div className="flex items-center gap-2 min-w-0">
@@ -1328,11 +1370,10 @@ export default function AdminNavigationView() {
                                                 {item.brandName || item.label}
                                               </span>
                                               <span
-                                                className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded-full ${
-                                                  item.isVisible
+                                                className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded-full ${item.isVisible
                                                     ? 'bg-emerald-100 text-emerald-800'
                                                     : 'bg-gray-100 text-gray-600'
-                                                }`}
+                                                  }`}
                                               >
                                                 {item.isVisible ? 'Visible' : 'Oculta'}
                                               </span>
@@ -1431,11 +1472,10 @@ export default function AdminNavigationView() {
                                   return (
                                     <div
                                       key={item.id}
-                                      className={`p-3 rounded-xs border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                                        item.isVisible
+                                      className={`p-3 rounded-xs border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${item.isVisible
                                           ? 'bg-white border-brand-dark/[0.1]'
                                           : 'bg-brand-dark/[0.02] border-brand-dark/[0.05] opacity-75'
-                                      }`}
+                                        }`}
                                     >
                                       {/* Left: Type badge & labels */}
                                       <div className="flex items-center gap-3 min-w-0">
@@ -1469,18 +1509,19 @@ export default function AdminNavigationView() {
                                               {item.targetType === 'CATEGORY'
                                                 ? 'Categoría'
                                                 : item.targetType === 'CUSTOM_LINK'
-                                                ? 'Enlace custom'
-                                                : 'Marca'}
+                                                  ? 'Enlace custom'
+                                                  : item.targetType === 'PRODUCT_FILTER'
+                                                    ? 'Filtro'
+                                                    : 'Marca'}
                                             </span>
                                             <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded-xs bg-brand-dark/[0.04] text-brand-dark/60">
                                               Columna {item.columnIndex + 1}
                                             </span>
                                             <span
-                                              className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded-full ${
-                                                item.isVisible
+                                              className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded-full ${item.isVisible
                                                   ? 'bg-emerald-100 text-emerald-800'
                                                   : 'bg-gray-100 text-gray-600'
-                                              }`}
+                                                }`}
                                             >
                                               {item.isVisible ? 'Visible' : 'Oculto'}
                                             </span>
@@ -1732,7 +1773,7 @@ export default function AdminNavigationView() {
                   <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
                     Tipo de destino
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() =>
@@ -1742,13 +1783,28 @@ export default function AdminNavigationView() {
                           error: null,
                         }))
                       }
-                      className={`py-2 px-3 text-xs font-semibold uppercase tracking-wider rounded-xs border transition-colors cursor-pointer ${
-                        addItemModal.targetType === 'CATEGORY'
+                      className={`py-2 px-2 text-xs font-semibold uppercase tracking-wider rounded-xs border transition-colors cursor-pointer text-center ${addItemModal.targetType === 'CATEGORY'
                           ? 'border-brand-dark bg-brand-dark text-white'
                           : 'border-brand-dark/20 text-brand-dark/70 hover:bg-brand-dark/[0.04]'
-                      }`}
+                        }`}
                     >
                       Categoría
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAddItemModal((prev) => ({
+                          ...prev,
+                          targetType: 'PRODUCT_FILTER',
+                          error: null,
+                        }))
+                      }
+                      className={`py-2 px-2 text-xs font-semibold uppercase tracking-wider rounded-xs border transition-colors cursor-pointer text-center ${addItemModal.targetType === 'PRODUCT_FILTER'
+                          ? 'border-brand-dark bg-brand-dark text-white'
+                          : 'border-brand-dark/20 text-brand-dark/70 hover:bg-brand-dark/[0.04]'
+                        }`}
+                    >
+                      Filtro
                     </button>
                     <button
                       type="button"
@@ -1759,13 +1815,12 @@ export default function AdminNavigationView() {
                           error: null,
                         }))
                       }
-                      className={`py-2 px-3 text-xs font-semibold uppercase tracking-wider rounded-xs border transition-colors cursor-pointer ${
-                        addItemModal.targetType === 'CUSTOM_LINK'
+                      className={`py-2 px-2 text-xs font-semibold uppercase tracking-wider rounded-xs border transition-colors cursor-pointer text-center ${addItemModal.targetType === 'CUSTOM_LINK'
                           ? 'border-brand-dark bg-brand-dark text-white'
                           : 'border-brand-dark/20 text-brand-dark/70 hover:bg-brand-dark/[0.04]'
-                      }`}
+                        }`}
                     >
-                      Enlace personalizado
+                      Personalizado
                     </button>
                   </div>
                 </div>
@@ -1886,9 +1941,135 @@ export default function AdminNavigationView() {
                       }
                       className="form-select w-full text-xs"
                     >
-                      <option value={0}>Columna 1</option>
-                      <option value={1}>Columna 2</option>
-                      <option value={2}>Columna 3</option>
+                      {Array.from(
+                        {
+                          length: Math.max(
+                            3,
+                            ...((addItemModal.section?.items || []).map((i) => i.columnIndex ?? 0) || []),
+                            addItemModal.columnIndex
+                          ) + 2,
+                        },
+                        (_, idx) => (
+                          <option key={idx} value={idx}>
+                            Columna {idx + 1}
+                          </option>
+                        )
+                      )}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* PRODUCT_FILTER Specific Fields */}
+              {addItemModal.targetType === 'PRODUCT_FILTER' && (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                      Etiqueta / Nombre visible <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={addItemModal.label}
+                      onChange={(e) =>
+                        setAddItemModal((prev) => ({ ...prev, label: e.target.value, error: null }))
+                      }
+                      placeholder="Ej: Men, Women, Retro Sneakers, Nike Running"
+                      className="form-input w-full text-xs"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                      Categoría (opcional)
+                    </label>
+                    <select
+                      value={addItemModal.categoryId}
+                      onChange={(e) =>
+                        setAddItemModal((prev) => ({ ...prev, categoryId: e.target.value, error: null }))
+                      }
+                      className="form-select w-full text-xs"
+                    >
+                      <option value="">(Sin filtro de categoría)</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.slug})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                      Marca (opcional)
+                    </label>
+                    <select
+                      value={addItemModal.brandId}
+                      onChange={(e) =>
+                        setAddItemModal((prev) => ({ ...prev, brandId: e.target.value, error: null }))
+                      }
+                      className="form-select w-full text-xs"
+                    >
+                      <option value="">(Sin filtro de marca)</option>
+                      {brands
+                        .filter((b) => b.isActive !== false)
+                        .map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                      Género (opcional)
+                    </label>
+                    <select
+                      value={addItemModal.gender}
+                      onChange={(e) =>
+                        setAddItemModal((prev) => ({ ...prev, gender: e.target.value, error: null }))
+                      }
+                      className="form-select w-full text-xs"
+                    >
+                      <option value="">(Sin filtro de género)</option>
+                      <option value="MEN">Hombre (MEN)</option>
+                      <option value="WOMEN">Mujer (WOMEN)</option>
+                      <option value="UNISEX">Unisex (UNISEX)</option>
+                    </select>
+                    <p className="text-[11px] text-brand-dark/45">
+                      Debes seleccionar al menos un criterio (Categoría, Marca o Género).
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                      Columna visual
+                    </label>
+                    <select
+                      value={addItemModal.columnIndex}
+                      onChange={(e) =>
+                        setAddItemModal((prev) => ({
+                          ...prev,
+                          columnIndex: Number(e.target.value),
+                        }))
+                      }
+                      className="form-select w-full text-xs"
+                    >
+                      {Array.from(
+                        {
+                          length: Math.max(
+                            3,
+                            ...((addItemModal.section?.items || []).map((i) => i.columnIndex ?? 0) || []),
+                            addItemModal.columnIndex
+                          ) + 2,
+                        },
+                        (_, idx) => (
+                          <option key={idx} value={idx}>
+                            Columna {idx + 1}
+                          </option>
+                        )
+                      )}
                     </select>
                   </div>
                 </div>
@@ -1950,9 +2131,20 @@ export default function AdminNavigationView() {
                       }
                       className="form-select w-full text-xs"
                     >
-                      <option value={0}>Columna 1</option>
-                      <option value={1}>Columna 2</option>
-                      <option value={2}>Columna 3</option>
+                      {Array.from(
+                        {
+                          length: Math.max(
+                            3,
+                            ...((addItemModal.section?.items || []).map((i) => i.columnIndex ?? 0) || []),
+                            addItemModal.columnIndex
+                          ) + 2,
+                        },
+                        (_, idx) => (
+                          <option key={idx} value={idx}>
+                            Columna {idx + 1}
+                          </option>
+                        )
+                      )}
                     </select>
                   </div>
                 </div>
@@ -2065,6 +2257,73 @@ export default function AdminNavigationView() {
                 </div>
               )}
 
+              {editItemModal.item.targetType === 'PRODUCT_FILTER' && (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                      Categoría (opcional)
+                    </label>
+                    <select
+                      value={editItemModal.categoryId}
+                      onChange={(e) =>
+                        setEditItemModal((prev) => ({ ...prev, categoryId: e.target.value, error: null }))
+                      }
+                      className="form-select w-full text-xs"
+                    >
+                      <option value="">(Sin filtro de categoría)</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.slug})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                      Marca (opcional)
+                    </label>
+                    <select
+                      value={editItemModal.brandId}
+                      onChange={(e) =>
+                        setEditItemModal((prev) => ({ ...prev, brandId: e.target.value, error: null }))
+                      }
+                      className="form-select w-full text-xs"
+                    >
+                      <option value="">(Sin filtro de marca)</option>
+                      {brands
+                        .filter((b) => b.isActive !== false || String(b.id) === String(editItemModal.brandId))
+                        .map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name} {b.isActive === false ? '(Inactiva)' : ''}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                      Género (opcional)
+                    </label>
+                    <select
+                      value={editItemModal.gender}
+                      onChange={(e) =>
+                        setEditItemModal((prev) => ({ ...prev, gender: e.target.value, error: null }))
+                      }
+                      className="form-select w-full text-xs"
+                    >
+                      <option value="">(Sin filtro de género)</option>
+                      <option value="MEN">Hombre (MEN)</option>
+                      <option value="WOMEN">Mujer (WOMEN)</option>
+                      <option value="UNISEX">Unisex (UNISEX)</option>
+                    </select>
+                    <p className="text-[11px] text-brand-dark/45">
+                      Debes seleccionar al menos un criterio (Categoría, Marca o Género).
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-1">
                 <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
                   Columna visual
@@ -2079,10 +2338,26 @@ export default function AdminNavigationView() {
                   }
                   className="form-select w-full text-xs"
                 >
-                  <option value={0}>Columna 1</option>
-                  <option value={1}>Columna 2</option>
-                  {editItemModal.section?.code?.toLowerCase() !== BRANDS_SECTION_CODE && (
-                    <option value={2}>Columna 3</option>
+                  {editItemModal.section?.code?.toLowerCase() === BRANDS_SECTION_CODE ? (
+                    <>
+                      <option value={0}>Columna 1 (Featured Brands)</option>
+                      <option value={1}>Columna 2 (Explore Brands)</option>
+                    </>
+                  ) : (
+                    Array.from(
+                      {
+                        length: Math.max(
+                          3,
+                          ...((editItemModal.section?.items || []).map((i) => i.columnIndex ?? 0) || []),
+                          editItemModal.columnIndex
+                        ) + 2,
+                      },
+                      (_, idx) => (
+                        <option key={idx} value={idx}>
+                          Columna {idx + 1}
+                        </option>
+                      )
+                    )
                   )}
                 </select>
               </div>

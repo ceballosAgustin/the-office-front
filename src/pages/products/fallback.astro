@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import ProductDetailView from "../../components/react/ProductDetailView.jsx";
+---
+
+<Layout
+  title="Detalle de Producto — The Office BA"
+  description="Prenda exclusiva de la colección The Office BA. Calce contemporáneo, confección estructurada y despacho seguro."
+  noCanonical={true}
+>
+  <ProductDetailView client:load />
+</Layout>

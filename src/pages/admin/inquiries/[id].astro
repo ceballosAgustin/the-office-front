@@ -3,10 +3,7 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
 import AdminInquiryDetailView from '../../../components/react/admin/AdminInquiryDetailView.jsx';
 
 export async function getStaticPaths() {
-  // Pre-render IDs 1-100 so static build supports inquiry detail routes
-  return Array.from({ length: 100 }, (_, i) => ({
-    params: { id: String(i + 1) },
-  }));
+  return [];
 }
 
 const { id } = Astro.params;

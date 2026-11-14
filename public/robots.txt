@@ -1,0 +1,7 @@
+# Robots.txt for The Office BA (https://theofficeba.ar)
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /cart
+
+Sitemap: https://theofficeba.ar/sitemap.xml

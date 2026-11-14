@@ -50,6 +50,8 @@ export interface BackendBrand {
 
 export type Brand = BackendBrand;
 
+export type ProductGender = 'MEN' | 'WOMEN' | 'UNISEX';
+
 export interface BackendProduct {
   id: number;
   title: string;
@@ -66,6 +68,7 @@ export interface BackendProduct {
   brandId?: number | null;
   brandName?: string | null;
   brandSlug?: string | null;
+  gender?: ProductGender | null;
   images?: BackendProductImage[];
   variants?: BackendVariant[];
 }
@@ -83,6 +86,7 @@ export interface AdminProductRequestPayload {
   price: number;
   categoryId: number;
   brandId?: number | null;
+  gender?: ProductGender | null;
   variants?: AdminProductVariantPayload[];
 }
 
@@ -103,7 +107,7 @@ export interface AdminBrandRequestPayload {
   isActive?: boolean;
 }
 
-export type NavTargetType = 'BRAND' | 'CATEGORY' | 'CUSTOM_LINK';
+export type NavTargetType = 'BRAND' | 'CATEGORY' | 'CUSTOM_LINK' | 'PRODUCT_FILTER';
 
 export interface NavSectionRequest {
   code?: string;
@@ -116,6 +120,7 @@ export interface NavItemRequest {
   targetType: NavTargetType;
   brandId?: number | null;
   categoryId?: number | null;
+  gender?: ProductGender | null;
   customUrl?: string | null;
   label?: string | null;
   columnIndex: number;
@@ -138,6 +143,7 @@ export interface NavItemResponse {
   categoryId?: number | null;
   categoryName?: string | null;
   categorySlug?: string | null;
+  gender?: ProductGender | null;
   customUrl?: string | null;
 }
 
@@ -161,6 +167,7 @@ export interface PublicNavigationItemResponse {
   categoryId?: number | null;
   categoryName?: string | null;
   categorySlug?: string | null;
+  gender?: ProductGender | null;
   customUrl?: string | null;
 }
 
@@ -194,6 +201,28 @@ export interface SpringPage<T> {
   empty?: boolean;
 }
 
+export interface FilterOptionsResponse {
+  availableSizes: string[];
+}
+
+export interface CatalogFilterParams {
+  category?: string | null;
+  categoryId?: number | string | null;
+  brand?: string | null;
+  gender?: ProductGender | string | null;
+  size?: string | null;
+  search?: string | null;
+}
+
+export interface ParsedCatalogParams {
+  category: string | null;
+  categoryId: number | null;
+  brand: string | null;
+  gender: ProductGender | null;
+  size: string | null;
+  search: string;
+}
+
 export interface Product {
   id: string;
   title: string;
@@ -211,6 +240,7 @@ export interface Product {
   brandId?: number;
   brandName?: string;
   brandSlug?: string;
+  gender?: ProductGender;
   image: string;
   images: string[];
   availableSizes: string[];
@@ -327,14 +357,72 @@ export class ApiError extends Error {
   }
 }
 
-const DEFAULT_API_URL = 'http://localhost:8080/api';
+const DEFAULT_LOCAL_API_URL = 'http://localhost:8080/api';
+export const EXPECTED_PROD_API_URL = 'https://api.theofficeba.ar/api';
 
 export function getApiBaseUrl(): string {
   // Read from Vite/Astro client or SSR environment
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.PUBLIC_API_URL) {
-    return import.meta.env.PUBLIC_API_URL;
+  const envUrl =
+    typeof import.meta !== 'undefined' && import.meta.env
+      ? import.meta.env.PUBLIC_API_URL
+      : undefined;
+
+  const isProd =
+    (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.PROD) ||
+    (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production');
+
+  if (isProd) {
+    if (!envUrl || typeof envUrl !== 'string' || !envUrl.trim()) {
+      const errorMsg =
+        `[The Office BA] Error de configuración en producción: La variable PUBLIC_API_URL no está definida. ` +
+        `Debe configurarse con la URL HTTPS de la API de producción (${EXPECTED_PROD_API_URL}).`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    const cleanUrl = envUrl.trim().replace(/\/+$/, '');
+
+    // Validación 1: Debe utilizar HTTPS
+    if (!cleanUrl.startsWith('https://')) {
+      const errorMsg =
+        `[The Office BA] Error de configuración en producción: PUBLIC_API_URL debe utilizar el protocolo seguro HTTPS (recibido: "${cleanUrl}"). ` +
+        `Valor esperado: ${EXPECTED_PROD_API_URL}`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    // Validación 2: No debe utilizar localhost, 127.0.0.1 ni interfaces locales/loopback
+    if (
+      cleanUrl.includes('localhost') ||
+      cleanUrl.includes('127.0.0.1') ||
+      cleanUrl.includes('0.0.0.0') ||
+      cleanUrl.includes('::1')
+    ) {
+      const errorMsg =
+        `[The Office BA] Error de configuración en producción: PUBLIC_API_URL no puede apuntar a localhost ni a direcciones locales (recibido: "${cleanUrl}"). ` +
+        `Debe apuntar a la API de producción configurada (${EXPECTED_PROD_API_URL}).`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    // Validación 3: Debe corresponder a la API de producción configurada
+    if (cleanUrl !== EXPECTED_PROD_API_URL) {
+      const errorMsg =
+        `[The Office BA] Error de configuración en producción: PUBLIC_API_URL ("${cleanUrl}") no coincide con la API de producción configurada. ` +
+        `Valor esperado: ${EXPECTED_PROD_API_URL}`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    return cleanUrl;
   }
-  return DEFAULT_API_URL;
+
+  // Development mode: use envUrl if provided, otherwise fallback to local development backend
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+
+  return DEFAULT_LOCAL_API_URL;
 }
 
 /**
@@ -430,6 +518,7 @@ export function mapBackendProduct(raw: BackendProduct): Product {
     brandId: raw.brandId ?? undefined,
     brandName: raw.brandName || undefined,
     brandSlug: raw.brandSlug || undefined,
+    gender: raw.gender ?? undefined,
     image: primaryImage,
     images: sortedImages,
     availableSizes,
@@ -438,14 +527,18 @@ export function mapBackendProduct(raw: BackendProduct): Product {
 }
 
 /**
- * Fetch all active products from backend with optional category, brand filtering and pagination.
+ * Fetch all active products from backend with optional category, brand, gender, variantSize filtering and pagination.
  */
 export async function fetchProducts(options?: {
+  category?: string | null;
   categoryId?: number | null;
   brand?: string | null;
+  gender?: ProductGender | string | null;
+  variantSize?: string | null;
   page?: number;
   size?: number;
   search?: string;
+  sort?: string;
   signal?: AbortSignal;
 }): Promise<Product[]> {
   const baseUrl = getApiBaseUrl();
@@ -453,14 +546,26 @@ export async function fetchProducts(options?: {
     options?.search ? `${baseUrl}/products/search` : `${baseUrl}/products`
   );
 
+  if (options?.category && options.category.trim()) {
+    url.searchParams.set('category', options.category.trim());
+  }
   if (options?.categoryId) {
     url.searchParams.set('categoryId', String(options.categoryId));
   }
   if (options?.brand && options.brand.trim()) {
-    url.searchParams.set('brand', options.brand.trim());
+    url.searchParams.set('brand', options.brand.trim().toLowerCase());
   }
-  if (options?.search) {
-    url.searchParams.set('title', options.search);
+  if (options?.gender && options.gender.trim()) {
+    url.searchParams.set('gender', options.gender.trim().toUpperCase());
+  }
+  if (options?.variantSize && options.variantSize.trim()) {
+    url.searchParams.set('variantSize', options.variantSize.trim());
+  }
+  if (options?.search && options.search.trim()) {
+    url.searchParams.set('title', options.search.trim());
+  }
+  if (options?.sort && options.sort.trim()) {
+    url.searchParams.set('sort', options.sort.trim());
   }
   url.searchParams.set('page', String(options?.page ?? 0));
   url.searchParams.set('size', String(options?.size ?? 50));
@@ -500,6 +605,64 @@ export async function fetchProducts(options?: {
       : [];
 
   return rawList.map(mapBackendProduct);
+}
+
+/**
+ * Fetch dynamic available sizes for active filters: GET /api/products/filter-options
+ * Calculates unique, normalized, ordered sizes from active variants with stock > 0.
+ * Does not receive variantSize.
+ */
+export async function fetchFilterOptions(options?: {
+  category?: string | null;
+  categoryId?: number | null;
+  brand?: string | null;
+  gender?: ProductGender | string | null;
+  title?: string | null;
+  signal?: AbortSignal;
+}): Promise<FilterOptionsResponse> {
+  const baseUrl = getApiBaseUrl();
+  const url = new URL(`${baseUrl}/products/filter-options`);
+
+  if (options?.category && options.category.trim()) {
+    url.searchParams.set('category', options.category.trim());
+  }
+  if (options?.categoryId) {
+    url.searchParams.set('categoryId', String(options.categoryId));
+  }
+  if (options?.brand && options.brand.trim()) {
+    url.searchParams.set('brand', options.brand.trim().toLowerCase());
+  }
+  if (options?.gender && options.gender.trim()) {
+    url.searchParams.set('gender', options.gender.trim().toUpperCase());
+  }
+  if (options?.title && options.title.trim()) {
+    url.searchParams.set('title', options.title.trim());
+  }
+
+  try {
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      cache: 'no-store',
+      signal: options?.signal,
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    if (!res.ok) {
+      return { availableSizes: [] };
+    }
+
+    const data = await res.json();
+    return {
+      availableSizes: Array.isArray(data?.availableSizes) ? data.availableSizes : [],
+    };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw err;
+    }
+    return { availableSizes: [] };
+  }
 }
 
 /**
@@ -624,13 +787,50 @@ export async function fetchBrandBySlug(slug: string): Promise<Brand | null> {
 }
 
 /**
- * Helper to fetch product IDs for static path pre-rendering if backend is available.
+ * Helper to fetch all active product IDs for static path pre-rendering and sitemap.
+ * Iterates across all pages using available pagination without artificial limits.
+ * In production, connection errors bubble up to prevent publishing incomplete builds.
  */
 export async function getAllProductPaths(): Promise<string[]> {
   try {
-    const products = await fetchProducts({ size: 100 });
-    return products.map((p) => p.id);
-  } catch {
+    const allIds: string[] = [];
+    const pageSize = 50;
+    let page = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const products = await fetchProducts({ page, size: pageSize });
+      if (!Array.isArray(products) || products.length === 0) {
+        break;
+      }
+      for (const p of products) {
+        if (p?.id != null) {
+          allIds.push(String(p.id));
+        }
+      }
+      if (products.length < pageSize) {
+        hasMore = false;
+        break;
+      }
+      page++;
+    }
+    return Array.from(new Set(allIds));
+  } catch (err: any) {
+    const isProd =
+      (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.PROD) ||
+      (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production');
+
+    if (isProd) {
+      const errorMsg =
+        `[The Office BA] Error crítico en producción: Falló la obtención de productos para generación estática y sitemap: ` +
+        (err instanceof Error ? err.message : String(err));
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    console.warn(
+      `[The Office BA] Advertencia (desarrollo): no se pudo conectar con el backend (${err?.message || err}). Se continuará con lista vacía de prerender.`
+    );
     return [];
   }
 }
@@ -1115,6 +1315,10 @@ export async function createAdminProduct(
     brandId: payload.brandId !== undefined ? (payload.brandId != null ? Number(payload.brandId) : null) : undefined,
   };
 
+  if (payload.gender !== undefined) {
+    productJsonBody.gender = payload.gender ? String(payload.gender).toUpperCase() : null;
+  }
+
   if (Array.isArray(payload.variants)) {
     productJsonBody.variants = payload.variants.map((v) => ({
       size: String(v.size || '').trim(),
@@ -1157,6 +1361,10 @@ export async function updateAdminProduct(
     categoryId: Number(payload.categoryId),
     brandId: payload.brandId !== undefined ? (payload.brandId != null ? Number(payload.brandId) : null) : undefined,
   };
+
+  if (payload.gender !== undefined) {
+    productJsonBody.gender = payload.gender ? String(payload.gender).toUpperCase() : null;
+  }
 
   if (Array.isArray(payload.variants)) {
     productJsonBody.variants = payload.variants.map((v) => {
@@ -1526,16 +1734,254 @@ export async function updateAdminOrderStatus(
 }
 
 // =========================================================================
-// NAVIGATION (NAVBAR & MEGAMENU) UTILITIES & ENDPOINTS
+// CATALOG URL BUILDER, PARSER & NAVIGATION UTILITIES
 // =========================================================================
 
 /**
+ * Builds a standardized, clean, semantic public catalog URL from active filter params.
+ * Always maintains #catalogo and omits empty/null/undefined parameters.
+ *
+ * Examples:
+ * - /?brand=nike#catalogo
+ * - /?category=remeras#catalogo
+ * - /?category=sneakers&gender=men#catalogo
+ * - /?category=sneakers&brand=nike#catalogo
+ * - /?category=sneakers&brand=nike&gender=men#catalogo
+ * - /?category=remeras&gender=women&brand=nike#catalogo
+ * - /?category=sneakers&size=42#catalogo
+ */
+export function buildCatalogHref(filters: CatalogFilterParams): string {
+  if (!filters || typeof filters !== 'object') {
+    return '/#catalogo';
+  }
+
+  const params = new URLSearchParams();
+
+  // Category: prefer semantic slug, fallback to categoryId only if slug is absent
+  if (filters.category && filters.category.trim()) {
+    params.set('category', filters.category.trim().toLowerCase());
+  } else if (filters.categoryId !== undefined && filters.categoryId !== null && String(filters.categoryId).trim()) {
+    params.set('categoryId', String(filters.categoryId).trim());
+  }
+
+  // Brand: lowercase slug
+  if (filters.brand && filters.brand.trim()) {
+    params.set('brand', filters.brand.trim().toLowerCase());
+  }
+
+  // Gender: lowercase in public URL (men, women, unisex)
+  if (filters.gender && filters.gender.trim()) {
+    params.set('gender', filters.gender.trim().toLowerCase());
+  }
+
+  // Size: public parameter 'size'
+  if (filters.size && filters.size.trim()) {
+    params.set('size', filters.size.trim());
+  }
+
+  // Search: title query
+  if (filters.search && filters.search.trim()) {
+    params.set('search', filters.search.trim());
+  }
+
+  const query = params.toString();
+  return query ? `/?${query}#catalogo` : '/#catalogo';
+}
+
+/**
+ * Parses catalog parameters from a search query string, URL or window.location.search.
+ * Handles both semantic parameters (category, size) and legacy parameters (categoryId, variantSize).
+ */
+export function parseCatalogParams(searchOrUrl?: string): ParsedCatalogParams {
+  let searchParams: URLSearchParams;
+
+  if (typeof searchOrUrl === 'string') {
+    if (searchOrUrl.includes('?')) {
+      const queryPart = searchOrUrl.split('?')[1].split('#')[0];
+      searchParams = new URLSearchParams(queryPart);
+    } else {
+      searchParams = new URLSearchParams(searchOrUrl);
+    }
+  } else if (typeof window !== 'undefined') {
+    searchParams = new URLSearchParams(window.location.search);
+  } else {
+    return {
+      category: null,
+      categoryId: null,
+      brand: null,
+      gender: null,
+      size: null,
+      search: '',
+    };
+  }
+
+  // Category slug (supports 'category' and legacy 'fromCategory')
+  const rawCatSlug =
+    searchParams.get('category')?.trim().toLowerCase() ||
+    searchParams.get('fromCategory')?.trim().toLowerCase() ||
+    null;
+
+  // Category ID (legacy compatibility)
+  const rawCatId =
+    searchParams.get('categoryId') ||
+    (rawCatSlug && Number.isFinite(Number(rawCatSlug)) ? rawCatSlug : null);
+  const categoryId =
+    rawCatId !== null && String(rawCatId).trim() !== '' && Number.isFinite(Number(rawCatId))
+      ? Number(rawCatId)
+      : null;
+
+  const rawCategory = rawCatSlug && !Number.isFinite(Number(rawCatSlug)) ? rawCatSlug : null;
+
+  // Brand slug (supports 'brand' and legacy 'fromBrand')
+  const brand =
+    searchParams.get('brand')?.trim().toLowerCase() ||
+    searchParams.get('fromBrand')?.trim().toLowerCase() ||
+    null;
+
+  // Gender (supports 'gender' and legacy 'fromGender', normalized to uppercase MEN, WOMEN, UNISEX)
+  const rawGender =
+    searchParams.get('gender')?.trim().toUpperCase() ||
+    searchParams.get('fromGender')?.trim().toUpperCase() ||
+    null;
+  const gender: ProductGender | null =
+    rawGender === 'MEN' || rawGender === 'WOMEN' || rawGender === 'UNISEX'
+      ? rawGender
+      : null;
+
+  // Size: accepts public 'size', legacy 'fromSize' and backend 'variantSize'
+  const rawSize =
+    searchParams.get('size')?.trim() ||
+    searchParams.get('fromSize')?.trim() ||
+    searchParams.get('variantSize')?.trim() ||
+    null;
+  const size = rawSize && rawSize.length > 0 ? rawSize : null;
+
+  // Search query: accepts 'search', legacy 'fromSearch' or 'title'
+  const search =
+    searchParams.get('search')?.trim() ||
+    searchParams.get('fromSearch')?.trim() ||
+    searchParams.get('title')?.trim() ||
+    '';
+
+  return {
+    category: rawCategory,
+    categoryId,
+    brand,
+    gender,
+    size,
+    search,
+  };
+}
+
+/**
+ * Determines whether a category object, category name, or slug corresponds to Sneakers.
+ */
+export function isSneakersCategory(
+  categoryOrSlug?:
+    | string
+    | {
+      slug?: string | null;
+      categorySlug?: string | null;
+      name?: string | null;
+      category?: string | null;
+      categoryName?: string | null;
+    }
+    | null
+): boolean {
+  if (!categoryOrSlug) return false;
+  if (typeof categoryOrSlug === 'string') {
+    const lower = categoryOrSlug.trim().toLowerCase();
+    return lower === 'sneakers' || lower === 'zapatillas' || lower === 'calzado';
+  }
+  const slug = (
+    categoryOrSlug.categorySlug ||
+    categoryOrSlug.slug ||
+    ''
+  ).trim().toLowerCase();
+  if (slug === 'sneakers' || slug === 'zapatillas' || slug === 'calzado') return true;
+
+  const name = (
+    categoryOrSlug.categoryName ||
+    categoryOrSlug.category ||
+    categoryOrSlug.name ||
+    ''
+  ).trim().toLowerCase();
+  return name === 'sneakers' || name === 'zapatillas' || name === 'calzado';
+}
+
+/**
+ * Formats product variant sizes for display:
+ * - Appends 'us' (lowercase) only for Sneakers products with numeric US sizes (e.g. "7" -> "7us", "7.5" -> "7.5us").
+ * - Avoids duplicating 'us' if the size string already contains 'us' or 'US'.
+ * - Preserves textile sizes (e.g. "XS", "S", "M", "L", "XL", "Único") without suffix.
+ * - Preserves ambiguous historical sizes (e.g. EU sizes like "42", "40", "38" where num > 20) without assuming US or converting.
+ * - Returns the original string for non-sneakers categories.
+ */
+export function formatProductSize(
+  rawSize: string | number | null | undefined,
+  categoryOrSlug?:
+    | string
+    | {
+      slug?: string | null;
+      categorySlug?: string | null;
+      name?: string | null;
+      category?: string | null;
+      categoryName?: string | null;
+    }
+    | null
+): string {
+  if (rawSize == null) return '';
+  const str = String(rawSize).trim();
+  if (!str) return '';
+
+  if (!isSneakersCategory(categoryOrSlug)) {
+    return str;
+  }
+
+  // Already has 'us' or 'US' suffix? (e.g., '7.5us', '7.5 US', '7.5US')
+  const usMatch = str.match(/^(.+?)\s*(?:us|US)$/i);
+  if (usMatch) {
+    return `${usMatch[1].trim()}us`;
+  }
+
+  // Check if it's a numeric US sneaker size (e.g. "7", "7.5", "8", "8.5", "11")
+  const normalizedNumStr = str.replace(',', '.');
+  const num = Number(normalizedNumStr);
+
+  // If it's a valid positive number within US sneaker range (e.g. 1 to 20):
+  // Ambiguous historical values like "42", "40", "38" (EU sizes > 20) are NOT US sizes.
+  if (!Number.isNaN(num) && num > 0 && num <= 20) {
+    return `${normalizedNumStr}us`;
+  }
+
+  // Non-numeric (textile/single size) or ambiguous legacy size (e.g. "42", "Único")
+  return str;
+}
+
+/**
+ * Normalizes input size strings for Sneakers:
+ * - Strips 'us' / 'US' suffixes.
+ * - Converts comma decimal separator to dot (e.g. "7,5" -> "7.5").
+ * - Trims whitespace.
+ */
+export function normalizeSneakerSizeValue(raw: string | number | null | undefined): string {
+  if (raw == null) return '';
+  let val = String(raw).trim();
+  val = val.replace(/\s*(?:us|US)$/i, '').trim();
+  val = val.replace(',', '.');
+  return val;
+}
+
+/**
  * Resolves the public destination URL for a navigation item.
+ * Supports BRAND, CATEGORY, PRODUCT_FILTER, and CUSTOM_LINK.
  */
 export function getNavigationItemHref(item?: {
   targetType?: NavTargetType | string | null;
   brandSlug?: string | null;
   categoryId?: number | string | null;
+  categorySlug?: string | null;
+  gender?: ProductGender | string | null;
   customUrl?: string | null;
 } | null): string {
   if (!item || !item.targetType) return '/#catalogo';
@@ -1543,12 +1989,37 @@ export function getNavigationItemHref(item?: {
   switch (item.targetType) {
     case 'BRAND':
       return item.brandSlug
-        ? `/?brand=${encodeURIComponent(item.brandSlug)}#catalogo`
+        ? buildCatalogHref({ brand: item.brandSlug })
         : '/#catalogo';
+
     case 'CATEGORY':
-      return item.categoryId != null && String(item.categoryId).trim().length > 0
-        ? `/?categoryId=${encodeURIComponent(String(item.categoryId))}#catalogo`
-        : '/#catalogo';
+      if (item.categorySlug && item.categorySlug.trim()) {
+        return buildCatalogHref({ category: item.categorySlug });
+      }
+      if (item.categoryId != null && String(item.categoryId).trim()) {
+        return buildCatalogHref({ categoryId: item.categoryId });
+      }
+      return '/#catalogo';
+
+    case 'PRODUCT_FILTER': {
+      const category = item.categorySlug?.trim() || null;
+      const brand = item.brandSlug?.trim() || null;
+      const gender = item.gender?.trim() || null;
+
+      if (!category && !brand && !gender) {
+        if (item.categoryId != null && String(item.categoryId).trim()) {
+          return buildCatalogHref({ categoryId: item.categoryId });
+        }
+        return '/#catalogo';
+      }
+
+      return buildCatalogHref({
+        category,
+        brand,
+        gender,
+      });
+    }
+
     case 'CUSTOM_LINK': {
       const url = item.customUrl ? item.customUrl.trim() : '';
       if (!url) return '/#catalogo';
@@ -1578,6 +2049,7 @@ export function getNavigationItemHref(item?: {
 
       return '/#catalogo';
     }
+
     default:
       return '/#catalogo';
   }
@@ -1620,7 +2092,7 @@ export function isExternalCustomUrl(url?: string | null): boolean {
 /**
  * Determines whether a URL is an internal catalog navigation target.
  * Catalog targets are located on the root path '/' and contain '#catalogo'
- * or catalog query parameters ('brand', 'categoryId', 'search').
+ * or catalog query parameters ('brand', 'category', 'categoryId', 'gender', 'size', 'variantSize', 'search').
  */
 export function isCatalogHref(href?: string | null): boolean {
   if (!href || typeof href !== 'string') return false;
@@ -1647,7 +2119,11 @@ export function isCatalogHref(href?: string | null): boolean {
     const hasCatalogHash = parsed.hash.toLowerCase() === '#catalogo';
     const hasCatalogParams =
       parsed.searchParams.has('brand') ||
+      parsed.searchParams.has('category') ||
       parsed.searchParams.has('categoryId') ||
+      parsed.searchParams.has('gender') ||
+      parsed.searchParams.has('size') ||
+      parsed.searchParams.has('variantSize') ||
       parsed.searchParams.has('search');
 
     return hasCatalogHash || hasCatalogParams;
@@ -1864,6 +2340,9 @@ export async function createAdminNavigationItem(
   if (payload.categoryId !== undefined && payload.categoryId !== null) {
     body.categoryId = Number(payload.categoryId);
   }
+  if (payload.gender !== undefined) {
+    body.gender = payload.gender ? String(payload.gender).toUpperCase() : null;
+  }
   if (payload.customUrl !== undefined && payload.customUrl !== null && payload.customUrl.trim().length > 0) {
     body.customUrl = payload.customUrl.trim();
   }
@@ -1900,6 +2379,9 @@ export async function updateAdminNavigationItem(
   }
   if (payload.categoryId !== undefined && payload.categoryId !== null) {
     body.categoryId = Number(payload.categoryId);
+  }
+  if (payload.gender !== undefined) {
+    body.gender = payload.gender ? String(payload.gender).toUpperCase() : null;
   }
   if (payload.customUrl !== undefined && payload.customUrl !== null && payload.customUrl.trim().length > 0) {
     body.customUrl = payload.customUrl.trim();
