@@ -491,11 +491,17 @@ export default function ProductDetailView({ productId = '' } = {}) {
           className="text-[11px] font-mono tracking-wider text-brand-dark/40 tabular-nums mr-1 select-none"
           aria-live="polite"
         >
-          {effectiveBrand ? `${effectiveBrand.toUpperCase()} · ` : ''}
-          {effectiveCategoryId !== null && product?.category
+          {effectiveContext.brand
+            ? `${effectiveContext.brand.toUpperCase()} · `
+            : ''}
+
+          {effectiveContext.categoryId !== null && product?.category
             ? `${product.category} · `
             : ''}
-          {effectiveSearch ? `«${effectiveSearch}» · ` : ''}
+
+          {effectiveContext.search
+            ? `«${effectiveContext.search}» · `
+            : ''}
           {currentIndex + 1} / {catalogList.length}
         </span>
 
@@ -504,9 +510,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
             <a
               href={buildProductHref(
                 previousProduct.id,
-                effectiveCategoryId,
-                effectiveSearch,
-                effectiveBrand
+                effectiveContext
               )}
               onClick={(e) => handleNavigateToProduct(e, previousProduct)}
               aria-label={`Producto anterior: ${previousProduct.title}`}
@@ -561,9 +565,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
             <a
               href={buildProductHref(
                 nextProduct.id,
-                effectiveCategoryId,
-                effectiveSearch,
-                effectiveBrand
+                effectiveContext
               )}
               onClick={(e) => handleNavigateToProduct(e, nextProduct)}
               aria-label={`Producto siguiente: ${nextProduct.title}`}
@@ -771,13 +773,13 @@ export default function ProductDetailView({ productId = '' } = {}) {
             <line x1="19" y1="12" x2="5" y2="12" />
             <polyline points="12 19 5 12 12 5" />
           </svg>
-          {effectiveSearch
-            ? `Volver a resultados de «${effectiveSearch}»`
-            : effectiveBrand && effectiveCategoryId !== null && product?.category
-              ? `Volver a ${product.category} de ${effectiveBrand.toUpperCase()}`
-              : effectiveBrand
-                ? `Volver a productos de ${effectiveBrand.toUpperCase()}`
-                : effectiveCategoryId !== null && product?.category
+          {effectiveContext.search
+            ? `Volver a resultados de «${effectiveContext.search}»`
+            : effectiveContext.brand && effectiveContext.categoryId !== null && product?.category
+              ? `Volver a ${product.category} de ${effectiveContext.brand.toUpperCase()}`
+              : effectiveContext.brand
+                ? `Volver a productos de ${effectiveContext.brand.toUpperCase()}`
+                : effectiveContext.categoryId !== null && product?.category
                   ? `Volver a ${product.category}`
                   : 'Volver al catálogo completo'}
         </a>
