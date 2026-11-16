@@ -6,6 +6,7 @@ import {
   updateAdminInquiryStatus,
   confirmAdminInquiry,
   formatPrice,
+  getOptimizedImageUrl,
 } from '../../../services/api';
 import { formatArgentinaDateTime } from '../../../utils/date';
 
@@ -510,15 +511,15 @@ export default function AdminInquiryDetailView({ inquiryId: propInquiryId = null
                         key={item.id ?? `${item.variantId ?? idx}-${item.size ?? idx}`}
                         className="p-4 sm:p-5 flex flex-row items-start gap-4 sm:gap-5"
                       >
-                        <div className="w-20 sm:w-24 aspect-[4/5] shrink-0 overflow-hidden bg-[#F2F2F0] rounded-xs border border-brand-dark/[0.06]">
+                        <div className="w-20 sm:w-24 aspect-[4/5] shrink-0 overflow-hidden rounded-xs border border-brand-dark/[0.06] flex items-center justify-center p-1">
                           <img
-                            src={imgSrc}
+                            src={getOptimizedImageUrl(imgSrc, 'thumbnail')}
                             alt={item.productTitle || 'Prenda solicitada'}
                             onError={(e) => {
                               e.currentTarget.onerror = null;
                               e.currentTarget.src = PLACEHOLDER_IMAGE;
                             }}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-contain object-center"
                           />
                         </div>
 

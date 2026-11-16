@@ -1,6 +1,7 @@
 ---
 import "../styles/global.css";
 import Navbar from "../components/ui/Navbar.astro";
+import ShippingAndPaymentSection from "../components/ui/ShippingAndPaymentSection.astro";
 import { WHATSAPP_CONTACT_URL, SOCIAL_LINKS } from "../utils/contact";
 
 interface Props {
@@ -9,14 +10,16 @@ interface Props {
   image?: string;
   canonicalPath?: string;
   noCanonical?: boolean;
+  hideTrustBanner?: boolean;
 }
 
 const {
-  title = "The Office BA — Friends and Family",
-  description = "Colección de indumentaria urbana contemporánea. Siluetas estructuradas, telas pesadas y calzado curado. Envíos a todo el país.",
+  title = "The Office BA — Indumentaria y Calzado Urbano",
+  description = "Productos 100% originales con stock inmediato. Sneakers exclusivos, indumentaria urbana y las marcas en tendencia más buscadas con envíos a todo el país.",
   image,
   canonicalPath,
   noCanonical = false,
+  hideTrustBanner = false,
 } = Astro.props;
 
 // Canonical domain is strictly the apex domain https://theofficeba.ar
@@ -83,6 +86,9 @@ const socialImage = image && image.trim().length > 0
       <slot />
     </main>
 
+    <!-- Global Shipping & Payment Info Pre-Footer Section -->
+    {!hideTrustBanner && <ShippingAndPaymentSection />}
+
     <!-- Minimalist Editorial Footer -->
     <footer
       class="border-t border-brand-dark/[0.08] mt-auto bg-[#FAFAFA]/70 backdrop-blur-xs"
@@ -101,10 +107,10 @@ const socialImage = image && image.trim().length > 0
               >
             </span>
             <p
-              class="text-xs sm:text-sm text-brand-dark/55 max-w-sm leading-relaxed"
+              class="text-xs sm:text-sm text-brand-dark/65 max-w-sm leading-relaxed"
             >
-              Estudio de indumentaria urbana y calzado contemporáneo. Piezas
-              desarrolladas con precisión formal y materiales duraderos.
+              Productos 100% originales con stock inmediato. Las marcas en tendencia
+              más solicitadas de indumentaria urbana y sneakers con envíos seguros a todo el país.
             </p>
           </div>
 

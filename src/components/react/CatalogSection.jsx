@@ -8,6 +8,9 @@ import {
   parseCatalogParams,
   formatProductSize,
   isSneakersCategory,
+  getOptimizedImageUrl,
+  isShoeSize,
+  sortProductSizes,
 } from '../../services/api';
 
 export default function CatalogSection() {
@@ -28,9 +31,11 @@ export default function CatalogSection() {
   const [selectedGender, setSelectedGender] = useState(
     () => parseCatalogParams().gender
   );
-  const [selectedSize, setSelectedSize] = useState(
-    () => parseCatalogParams().size
-  );
+  const [selectedSizes, setSelectedSizes] = useState(() => {
+    const raw = parseCatalogParams().size;
+    if (!raw || typeof raw !== 'string') return [];
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  });
   const [searchQuery, setSearchQuery] = useState(
     () => parseCatalogParams().search
   );
@@ -38,6 +43,36 @@ export default function CatalogSection() {
   // Dynamic available sizes calculated server-side
   const [availableSizes, setAvailableSizes] = useState([]);
   const [isLoadingSizes, setIsLoadingSizes] = useState(false);
+
+  // Dropdown states for sizes
+  const [openClothingDropdown, setOpenClothingDropdown] = useState(false);
+  const [openSneakerDropdown, setOpenSneakerDropdown] = useState(false);
+  const clothingDropdownRef = useRef(null);
+  const sneakerDropdownRef = useRef(null);
+
+  // Close dropdowns when clicking outside or pressing Escape
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (clothingDropdownRef.current && !clothingDropdownRef.current.contains(e.target)) {
+        setOpenClothingDropdown(false);
+      }
+      if (sneakerDropdownRef.current && !sneakerDropdownRef.current.contains(e.target)) {
+        setOpenSneakerDropdown(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setOpenClothingDropdown(false);
+        setOpenSneakerDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -54,6 +89,26 @@ export default function CatalogSection() {
     return false;
   }, [selectedCategory, selectedCategoryId, categories]);
 
+  // Separate and sort available sizes into clothing (textile) and sneakers (shoe numbers)
+  const { clothingSizes, sneakerSizes } = useMemo(() => {
+    const clothing = [];
+    const sneakers = [];
+
+    (availableSizes || []).forEach((size) => {
+      if (!size) return;
+      if (isShoeSize(size)) {
+        sneakers.push(size);
+      } else {
+        clothing.push(size);
+      }
+    });
+
+    return {
+      clothingSizes: sortProductSizes(clothing),
+      sneakerSizes: sortProductSizes(sneakers),
+    };
+  }, [availableSizes]);
+
   const productsReqIdRef = useRef(0);
   const filterOptionsReqIdRef = useRef(0);
 
@@ -63,7 +118,7 @@ export default function CatalogSection() {
     catId = selectedCategoryId,
     brandSlug = selectedBrand,
     genderVal = selectedGender,
-    sizeVal = selectedSize,
+    sizesVal = selectedSizes,
     searchVal = searchQuery
   ) => {
     productsReqIdRef.current += 1;
@@ -73,13 +128,16 @@ export default function CatalogSection() {
     setErrorMessage(null);
 
     try {
+      const singleSize =
+        Array.isArray(sizesVal) && sizesVal.length === 1 ? sizesVal[0] : undefined;
+
       const [fetchedProducts, fetchedCategories, fetchedBrands] = await Promise.all([
         fetchProducts({
           category: catSlug || undefined,
           categoryId: catSlug ? undefined : (catId ?? undefined),
           brand: brandSlug || undefined,
           gender: genderVal || undefined,
-          variantSize: sizeVal || undefined,
+          variantSize: singleSize,
           search: searchVal || undefined,
           size: 50,
           page: 0,
@@ -90,7 +148,16 @@ export default function CatalogSection() {
 
       if (reqId !== productsReqIdRef.current) return;
 
-      setProducts(fetchedProducts);
+      let finalProducts = fetchedProducts;
+      if (Array.isArray(sizesVal) && sizesVal.length > 0) {
+        const normSelected = sizesVal.map((s) => s.trim().toLowerCase());
+        finalProducts = fetchedProducts.filter((p) => {
+          const available = (p.availableSizes || []).map((s) => String(s).trim().toLowerCase());
+          return normSelected.some((sel) => available.includes(sel));
+        });
+      }
+
+      setProducts(finalProducts);
       if (fetchedCategories && fetchedCategories.length > 0) {
         setCategories(fetchedCategories);
       }
@@ -109,7 +176,7 @@ export default function CatalogSection() {
     }
   };
 
-  // Fetch dynamic size options from backend (independent of selected size)
+  // Fetch dynamic size options from backend (independent of selected sizes)
   const loadSizes = async (
     catSlug = selectedCategory,
     catId = selectedCategoryId,
@@ -135,18 +202,18 @@ export default function CatalogSection() {
       const loadedSizes = Array.isArray(res?.availableSizes) ? res.availableSizes : [];
       setAvailableSizes(loadedSizes);
 
-      // Consistency: if a size is selected but no longer available in the new combination, clear it
-      if (selectedSize && loadedSizes.length > 0 && !loadedSizes.includes(selectedSize)) {
-        setSelectedSize(null);
-        updateCatalogUrl({
-          category: catSlug,
-          categoryId: catId,
-          brand: brandSlug,
-          gender: genderVal,
-          size: null,
-          search: searchVal,
-        }, false);
-      }
+      // Consistency: if sizes are selected but no longer available, purge them
+      setSelectedSizes((prev) => {
+        if (!prev || prev.length === 0 || loadedSizes.length === 0) return prev;
+        const valid = prev.filter((sel) =>
+          loadedSizes.some((ls) => ls.trim().toLowerCase() === sel.trim().toLowerCase())
+        );
+        if (valid.length !== prev.length) {
+          updateCatalogUrl({ sizes: valid }, false);
+          return valid;
+        }
+        return prev;
+      });
     } catch {
       if (reqId !== filterOptionsReqIdRef.current) return;
       setAvailableSizes([]);
@@ -165,7 +232,9 @@ export default function CatalogSection() {
     setSelectedCategoryId(parsed.categoryId);
     setSelectedBrand(parsed.brand);
     setSelectedGender(parsed.gender);
-    setSelectedSize(parsed.size);
+    const rawSize = parsed.size;
+    const sizes = rawSize ? rawSize.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    setSelectedSizes(sizes);
     setSearchQuery(parsed.search);
   };
 
@@ -198,7 +267,7 @@ export default function CatalogSection() {
       selectedCategoryId,
       selectedBrand,
       selectedGender,
-      selectedSize,
+      selectedSizes,
       searchQuery
     );
   }, [
@@ -206,7 +275,7 @@ export default function CatalogSection() {
     selectedCategoryId,
     selectedBrand,
     selectedGender,
-    selectedSize,
+    selectedSizes,
     searchQuery,
   ]);
 
@@ -243,8 +312,12 @@ export default function CatalogSection() {
       nextFilters.brand !== undefined ? nextFilters.brand : selectedBrand;
     const targetGender =
       nextFilters.gender !== undefined ? nextFilters.gender : selectedGender;
-    const targetSize =
-      nextFilters.size !== undefined ? nextFilters.size : selectedSize;
+    const targetSizes =
+      nextFilters.sizes !== undefined
+        ? nextFilters.sizes
+        : nextFilters.size !== undefined
+        ? (nextFilters.size ? [nextFilters.size] : [])
+        : selectedSizes;
     const targetSearch =
       nextFilters.search !== undefined ? nextFilters.search : searchQuery;
 
@@ -253,7 +326,7 @@ export default function CatalogSection() {
       categoryId: targetCategoryId,
       brand: targetBrand,
       gender: targetGender,
-      size: targetSize,
+      size: targetSizes.length > 0 ? targetSizes.join(',') : null,
       search: targetSearch,
     });
 
@@ -283,10 +356,25 @@ export default function CatalogSection() {
     updateCatalogUrl({ gender: nextGender }, true);
   };
 
-  const handleSizeSelect = (sizeValue) => {
-    const nextSize = selectedSize === sizeValue ? null : sizeValue;
-    setSelectedSize(nextSize);
-    updateCatalogUrl({ size: nextSize }, true);
+  const handleToggleSize = (sizeValue) => {
+    if (!sizeValue) return;
+    const exists = selectedSizes.some(
+      (s) => s.trim().toLowerCase() === sizeValue.trim().toLowerCase()
+    );
+    const nextSizes = exists
+      ? selectedSizes.filter((s) => s.trim().toLowerCase() !== sizeValue.trim().toLowerCase())
+      : [...selectedSizes, sizeValue];
+
+    setSelectedSizes(nextSizes);
+    updateCatalogUrl({ sizes: nextSizes }, true);
+  };
+
+  const handleRemoveSize = (sizeToRemove) => {
+    const nextSizes = selectedSizes.filter(
+      (s) => s.trim().toLowerCase() !== sizeToRemove.trim().toLowerCase()
+    );
+    setSelectedSizes(nextSizes);
+    updateCatalogUrl({ sizes: nextSizes }, true);
   };
 
   const handleClearCategory = () => {
@@ -305,9 +393,9 @@ export default function CatalogSection() {
     updateCatalogUrl({ gender: null }, true);
   };
 
-  const handleClearSize = () => {
-    setSelectedSize(null);
-    updateCatalogUrl({ size: null }, true);
+  const handleClearSizes = () => {
+    setSelectedSizes([]);
+    updateCatalogUrl({ sizes: [] }, true);
   };
 
   const handleClearSearch = () => {
@@ -320,7 +408,7 @@ export default function CatalogSection() {
     setSelectedCategoryId(null);
     setSelectedBrand(null);
     setSelectedGender(null);
-    setSelectedSize(null);
+    setSelectedSizes([]);
     setSearchQuery('');
     updateCatalogUrl(
       {
@@ -328,7 +416,7 @@ export default function CatalogSection() {
         categoryId: null,
         brand: null,
         gender: null,
-        size: null,
+        sizes: [],
         search: '',
       },
       true
@@ -353,9 +441,10 @@ export default function CatalogSection() {
       params.set('gender', selectedGender.toLowerCase());
       params.set('fromGender', selectedGender.toLowerCase());
     }
-    if (selectedSize) {
-      params.set('size', selectedSize);
-      params.set('fromSize', selectedSize);
+    if (selectedSizes.length > 0) {
+      const sizesStr = selectedSizes.join(',');
+      params.set('size', sizesStr);
+      params.set('fromSize', sizesStr);
     }
     if (searchQuery) {
       params.set('search', searchQuery);
@@ -400,7 +489,7 @@ export default function CatalogSection() {
     selectedCategory ||
     selectedCategoryId ||
     selectedGender ||
-    selectedSize
+    selectedSizes.length > 0
   );
 
   return (
@@ -456,70 +545,240 @@ export default function CatalogSection() {
         </div>
       </div>
 
-      {/* 2. Secondary Filter Bar (Gender & Sizes) inspired by OneKickz minimal aesthetic */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 py-3 border-b border-brand-dark/[0.06] mb-6">
-        {/* Gender Filter Buttons */}
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-dark/40 mr-1 shrink-0">
-            Género:
-          </span>
-          {[
-            { value: null, label: 'Todos' },
-            { value: 'MEN', label: 'Hombre' },
-            { value: 'WOMEN', label: 'Mujer' },
-            { value: 'UNISEX', label: 'Unisex' },
-          ].map((item) => {
-            const isActive =
-              item.value === null ? selectedGender === null : selectedGender === item.value;
-            return (
-              <button
-                key={`gender-${item.label}`}
-                type="button"
-                onClick={() => handleGenderSelect(item.value)}
-                className={`px-3 py-1 text-xs tracking-tight rounded-xs border transition-colors cursor-pointer whitespace-nowrap ${
-                  isActive
-                    ? 'bg-brand-dark text-white border-brand-dark font-medium'
-                    : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
-                }`}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Dynamic Size Options (from GET /api/products/filter-options) */}
-        {availableSizes && availableSizes.length > 0 && (
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+      {/* 2. Secondary Filter Bar (Gender, Talles & Números) */}
+      <div className="flex flex-col gap-3.5 py-3 border-b border-brand-dark/[0.06] mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-6">
+          {/* Gender Filter Buttons */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-dark/40 mr-1 shrink-0">
-              Talles:
+              Género:
             </span>
-            <div className="flex items-center gap-1">
-              {availableSizes.map((size) => {
-                const isActive = selectedSize === size;
-                const displaySize = isCurrentSneakers
-                  ? formatProductSize(size, 'sneakers')
-                  : size;
-                return (
-                  <button
-                    key={`size-${size}`}
-                    type="button"
-                    onClick={() => handleSizeSelect(size)}
-                    aria-pressed={isActive}
-                    title={`Filtrar por talle ${displaySize}`}
-                    className={`min-w-[32px] h-7 px-2 flex items-center justify-center text-xs tracking-tight rounded-xs border transition-colors cursor-pointer tabular-nums ${
-                      isActive
-                        ? 'bg-brand-dark text-white border-brand-dark font-semibold'
-                        : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
-                    }`}
-                  >
-                    {displaySize}
-                  </button>
-                );
-              })}
-            </div>
+            {[
+              { value: null, label: 'Todos' },
+              { value: 'MEN', label: 'Hombre' },
+              { value: 'WOMEN', label: 'Mujer' },
+              { value: 'UNISEX', label: 'Unisex' },
+            ].map((item) => {
+              const isActive =
+                item.value === null ? selectedGender === null : selectedGender === item.value;
+              return (
+                <button
+                  key={`gender-${item.label}`}
+                  type="button"
+                  onClick={() => handleGenderSelect(item.value)}
+                  className={`px-3 py-1 text-xs tracking-tight rounded-xs border transition-colors cursor-pointer whitespace-nowrap ${
+                    isActive
+                      ? 'bg-brand-dark text-white border-brand-dark font-medium'
+                      : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
           </div>
-        )}
+
+          {/* Sizes / Numbers Filter Options */}
+          {((clothingSizes && clothingSizes.length > 0) || (sneakerSizes && sneakerSizes.length > 0)) && (
+            <div className="flex flex-wrap items-center gap-y-2.5 gap-x-5">
+              {/* Clothing Sizes (Talles) */}
+              {clothingSizes.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-dark/40 mr-1 shrink-0">
+                    Talles:
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {clothingSizes.slice(0, 5).map((size) => {
+                      const isSelected = selectedSizes.some(
+                        (s) => s.trim().toLowerCase() === size.trim().toLowerCase()
+                      );
+                      return (
+                        <button
+                          key={`size-${size}`}
+                          type="button"
+                          onClick={() => handleToggleSize(size)}
+                          aria-pressed={isSelected}
+                          title={`Filtrar por talle ${size}`}
+                          className={`min-w-[32px] h-7 px-2 flex items-center justify-center text-xs tracking-tight rounded-xs border transition-colors cursor-pointer tabular-nums ${
+                            isSelected
+                              ? 'bg-brand-dark text-white border-brand-dark font-semibold'
+                              : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
+                          }`}
+                        >
+                          {size}
+                        </button>
+                      );
+                    })}
+
+                    {/* Dropdown for remaining clothing sizes if > 5 */}
+                    {clothingSizes.length > 5 && (
+                      <div className="relative" ref={clothingDropdownRef}>
+                        {(() => {
+                          const moreSizes = clothingSizes.slice(5);
+                          const hasActiveInMore = moreSizes.some((s) =>
+                            selectedSizes.some((sel) => sel.trim().toLowerCase() === s.trim().toLowerCase())
+                          );
+                          return (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenClothingDropdown((prev) => !prev);
+                                  setOpenSneakerDropdown(false);
+                                }}
+                                className={`h-7 px-2 flex items-center gap-1 text-xs tracking-tight rounded-xs border transition-colors cursor-pointer whitespace-nowrap ${
+                                  hasActiveInMore
+                                    ? 'bg-brand-dark text-white border-brand-dark font-semibold'
+                                    : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
+                                }`}
+                                aria-expanded={openClothingDropdown}
+                                title="Más talles disponibles"
+                              >
+                                <span>+ Más ({moreSizes.length})</span>
+                                <svg
+                                  className={`w-3 h-3 transition-transform ${openClothingDropdown ? 'rotate-180' : ''}`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+
+                              {openClothingDropdown && (
+                                <div className="absolute right-0 sm:right-auto sm:left-0 top-full mt-1.5 z-40 bg-white border border-brand-dark/15 shadow-xl rounded-xs p-2 min-w-[170px] max-h-56 overflow-y-auto grid grid-cols-3 gap-1.5">
+                                  {moreSizes.map((size) => {
+                                    const isSelected = selectedSizes.some(
+                                      (s) => s.trim().toLowerCase() === size.trim().toLowerCase()
+                                    );
+                                    return (
+                                      <button
+                                        key={`more-size-${size}`}
+                                        type="button"
+                                        onClick={() => handleToggleSize(size)}
+                                        aria-pressed={isSelected}
+                                        className={`h-7 px-2 flex items-center justify-center text-xs tracking-tight rounded-xs border transition-colors cursor-pointer tabular-nums ${
+                                          isSelected
+                                            ? 'bg-brand-dark text-white border-brand-dark font-semibold'
+                                            : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
+                                        }`}
+                                      >
+                                        {size}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Sneaker Numbers (Números) */}
+              {sneakerSizes.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-dark/40 mr-1 shrink-0">
+                    Números:
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {sneakerSizes.slice(0, 5).map((size) => {
+                      const isSelected = selectedSizes.some(
+                        (s) => s.trim().toLowerCase() === size.trim().toLowerCase()
+                      );
+                      const displaySize = formatProductSize(size, 'sneakers');
+                      return (
+                        <button
+                          key={`shoe-size-${size}`}
+                          type="button"
+                          onClick={() => handleToggleSize(size)}
+                          aria-pressed={isSelected}
+                          title={`Filtrar por número ${displaySize}`}
+                          className={`min-w-[34px] h-7 px-2 flex items-center justify-center text-xs tracking-tight rounded-xs border transition-colors cursor-pointer tabular-nums ${
+                            isSelected
+                              ? 'bg-brand-dark text-white border-brand-dark font-semibold'
+                              : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
+                          }`}
+                        >
+                          {displaySize}
+                        </button>
+                      );
+                    })}
+
+                    {/* Dropdown for remaining sneaker sizes if > 5 */}
+                    {sneakerSizes.length > 5 && (
+                      <div className="relative" ref={sneakerDropdownRef}>
+                        {(() => {
+                          const moreSizes = sneakerSizes.slice(5);
+                          const hasActiveInMore = moreSizes.some((s) =>
+                            selectedSizes.some((sel) => sel.trim().toLowerCase() === s.trim().toLowerCase())
+                          );
+                          return (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenSneakerDropdown((prev) => !prev);
+                                  setOpenClothingDropdown(false);
+                                }}
+                                className={`h-7 px-2 flex items-center gap-1 text-xs tracking-tight rounded-xs border transition-colors cursor-pointer whitespace-nowrap ${
+                                  hasActiveInMore
+                                    ? 'bg-brand-dark text-white border-brand-dark font-semibold'
+                                    : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
+                                }`}
+                                aria-expanded={openSneakerDropdown}
+                                title="Más números disponibles"
+                              >
+                                <span>+ Más ({moreSizes.length})</span>
+                                <svg
+                                  className={`w-3 h-3 transition-transform ${openSneakerDropdown ? 'rotate-180' : ''}`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+
+                              {openSneakerDropdown && (
+                                <div className="absolute right-0 sm:right-auto sm:left-0 top-full mt-1.5 z-40 bg-white border border-brand-dark/15 shadow-xl rounded-xs p-2 min-w-[190px] max-h-56 overflow-y-auto grid grid-cols-3 gap-1.5">
+                                  {moreSizes.map((size) => {
+                                    const isSelected = selectedSizes.some(
+                                      (s) => s.trim().toLowerCase() === size.trim().toLowerCase()
+                                    );
+                                    const displaySize = formatProductSize(size, 'sneakers');
+                                    return (
+                                      <button
+                                        key={`more-shoe-${size}`}
+                                        type="button"
+                                        onClick={() => handleToggleSize(size)}
+                                        aria-pressed={isSelected}
+                                        className={`h-7 px-2 flex items-center justify-center text-xs tracking-tight rounded-xs border transition-colors cursor-pointer tabular-nums ${
+                                          isSelected
+                                            ? 'bg-brand-dark text-white border-brand-dark font-semibold'
+                                            : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
+                                        }`}
+                                      >
+                                        {displaySize}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 3. Active Filters Chips Banner */}
@@ -589,22 +848,28 @@ export default function CatalogSection() {
               </span>
             )}
 
-            {selectedSize && (
-              <span className="inline-flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xs border border-brand-dark/10">
-                <span>Talle:</span>
-                <strong className="text-brand-dark font-medium tabular-nums">
-                  {isCurrentSneakers ? formatProductSize(selectedSize, 'sneakers') : selectedSize}
-                </strong>
-                <button
-                  type="button"
-                  onClick={handleClearSize}
-                  aria-label="Quitar filtro de talle"
-                  className="ml-1 text-brand-dark/40 hover:text-brand-dark font-bold cursor-pointer"
-                >
-                  ×
-                </button>
-              </span>
-            )}
+            {selectedSizes.length > 0 &&
+              selectedSizes.map((sz) => {
+                const isShoe = isShoeSize(sz);
+                const display = isShoe ? formatProductSize(sz, 'sneakers') : sz;
+                return (
+                  <span
+                    key={`chip-size-${sz}`}
+                    className="inline-flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xs border border-brand-dark/10"
+                  >
+                    <span>{isShoe ? 'Número:' : 'Talle:'}</span>
+                    <strong className="text-brand-dark font-medium tabular-nums">{display}</strong>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSize(sz)}
+                      aria-label={`Quitar filtro de ${isShoe ? 'número' : 'talle'} ${display}`}
+                      className="ml-1 text-brand-dark/40 hover:text-brand-dark font-bold cursor-pointer"
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
           </div>
 
           <div className="flex items-center gap-2">
@@ -676,7 +941,7 @@ export default function CatalogSection() {
                   selectedCategoryId,
                   selectedBrand,
                   selectedGender,
-                  selectedSize,
+                  selectedSizes,
                   searchQuery
                 )
               }
@@ -724,17 +989,17 @@ export default function CatalogSection() {
                   product.category ? ' — ' + product.category : ''
                 }, ${product.formattedPrice}`}
               >
-                {/* Image Canvas (4:5 ratio, neutral light background) */}
-                <div className="aspect-[4/5] w-full overflow-hidden bg-[#F2F2F0] relative">
+                {/* Image Canvas (4:5 ratio, clean white backdrop for uniform card appearance) */}
+                <div className="aspect-[4/5] w-full bg-white rounded-xs overflow-hidden relative flex items-center justify-center">
                   <img
-                    src={product.image}
+                    src={getOptimizedImageUrl(product.image, 'card')}
                     alt={product.title}
                     loading="lazy"
                     decoding="async"
-                    className="w-full h-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03] select-none"
+                    className="w-full h-full object-contain object-center transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04] select-none"
                   />
                   {product.badge && (
-                    <span className="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 text-[8px] sm:text-[9px] md:text-[10px] font-semibold uppercase tracking-[0.18em] px-1.5 py-0.5 sm:px-2 sm:py-0.5 bg-[#1D110D]/90 text-[#FAFAFA] backdrop-blur-xs">
+                    <span className="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 text-[8px] sm:text-[9px] md:text-[10px] font-semibold uppercase tracking-[0.18em] px-1.5 py-0.5 sm:px-2 sm:py-0.5 bg-[#1D110D]/90 text-[#FAFAFA] backdrop-blur-xs pointer-events-none">
                       {product.badge}
                     </span>
                   )}
@@ -748,7 +1013,10 @@ export default function CatalogSection() {
                       <span className="text-brand-dark/35">{genderLabelMap[product.gender] || product.gender}</span>
                     )}
                   </div>
-                  <h3 className="text-xs sm:text-[13px] md:text-sm font-medium tracking-tight text-brand-dark group-hover:text-brand-dark/70 transition-colors duration-150 mt-0.5 line-clamp-1 leading-snug">
+                  <h3
+                    title={product.title}
+                    className="text-[11px] sm:text-[12px] md:text-[12.5px] font-medium tracking-tight text-brand-dark group-hover:text-brand-dark/70 transition-colors duration-150 mt-0.5 truncate leading-snug"
+                  >
                     {product.title}
                   </h3>
                   <p className="text-xs sm:text-[13px] md:text-sm font-semibold tracking-tight text-brand-dark tabular-nums mt-0.5 flex flex-wrap items-baseline gap-1.5">

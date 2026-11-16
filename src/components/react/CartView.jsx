@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useCart } from '../../store/cartStore';
-import { createInquiry, formatPrice } from '../../services/api';
+import { createInquiry, formatPrice, getOptimizedImageUrl } from '../../services/api';
 
 const PLACEHOLDER_IMAGE =
   'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22400%22%20height%3D%22500%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23F2F2F0%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20dominant-baseline%3D%22middle%22%20text-anchor%3D%22middle%22%20font-family%3D%22sans-serif%22%20font-size%3D%2214%22%20fill%3D%22%231D110D80%22%3ETHE%20OFFICE%20BA%3C%2Ftext%3E%3C%2Fsvg%3E';
@@ -416,25 +416,25 @@ export default function CartView() {
                   className={`py-6 first:pt-0 flex flex-row gap-4 sm:gap-6 items-start ${isUnavailable ? 'opacity-85' : ''
                     }`}
                 >
-                  {/* Product Thumbnail (4:5 ratio, neutral backdrop) */}
-                  <div className="w-24 sm:w-28 aspect-[4/5] shrink-0 overflow-hidden bg-[#F2F2F0] rounded-xs relative">
+                  {/* Product Thumbnail (4:5 ratio) */}
+                  <div className="w-24 sm:w-28 aspect-[4/5] shrink-0 overflow-hidden rounded-xs relative flex items-center justify-center">
                     {productUrl ? (
                       <a
                         href={productUrl}
-                        className="block w-full h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30"
+                        className="block w-full h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 flex items-center justify-center"
                       >
                         <img
-                          src={imgSrc}
+                          src={getOptimizedImageUrl(imgSrc, 'thumbnail')}
                           alt={item.title}
-                          className={`w-full h-full object-cover hover:scale-[1.03] transition-transform duration-300 ${isUnavailable ? 'grayscale' : ''
+                          className={`w-full h-full object-contain object-center hover:scale-[1.03] transition-transform duration-300 ${isUnavailable ? 'grayscale' : ''
                             }`}
                         />
                       </a>
                     ) : (
                       <img
-                        src={imgSrc}
+                        src={getOptimizedImageUrl(imgSrc, 'thumbnail')}
                         alt={item.title}
-                        className={`w-full h-full object-cover ${isUnavailable ? 'grayscale' : ''
+                        className={`w-full h-full object-contain object-center ${isUnavailable ? 'grayscale' : ''
                           }`}
                       />
                     )}

@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { fetchProducts, buildCatalogHref, parseCatalogParams } from '../../services/api';
+import {
+  fetchProducts,
+  buildCatalogHref,
+  parseCatalogParams,
+  getOptimizedImageUrl,
+} from '../../services/api';
 
 const MIN_SEARCH_LENGTH = 2;
 const DEBOUNCE_MS = 280;
@@ -566,13 +571,13 @@ export default function NavbarSearch() {
                             }`}
                           >
                             {/* Product Primary Image (4:5 ratio) */}
-                            <div className="aspect-[4/5] w-11 shrink-0 overflow-hidden rounded-xs bg-[#F2F2F0] border border-brand-dark/[0.06]">
+                            <div className="aspect-[4/5] w-11 shrink-0 overflow-hidden rounded-xs border border-brand-dark/[0.06] flex items-center justify-center">
                               <img
-                                src={product.image}
+                                src={getOptimizedImageUrl(product.image, 'thumbnail')}
                                 alt={product.title}
                                 loading="lazy"
                                 decoding="async"
-                                className="w-full h-full object-cover"
+                                className="w-full h-full object-contain object-center"
                               />
                             </div>
 

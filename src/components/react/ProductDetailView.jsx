@@ -388,7 +388,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 items-start">
           {/* Gallery Skeleton (Left 58%) */}
-          <div className="lg:col-span-7 w-full aspect-[4/5] bg-[#F2F2F0] rounded-xs" />
+          <div className="lg:col-span-7 w-full aspect-[4/3] max-h-[500px] bg-brand-dark/5 rounded-xs" />
 
           {/* Meta & Purchase Skeleton (Right 42%) */}
           <div className="lg:col-span-5 w-full space-y-6">

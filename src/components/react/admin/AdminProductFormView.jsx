@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import AdminShell from './AdminShell';
+import SweetAlertModal from './SweetAlertModal';
 import {
   fetchAdminProductById,
   createAdminProduct,
   updateAdminProduct,
   updateAdminProductStatus,
+  deleteAdminProduct,
   deleteAdminProductImage,
   setAdminProductPrimaryImage,
   reorderAdminProductImages,
@@ -13,6 +15,7 @@ import {
   formatPrice,
   normalizeSneakerSizeValue,
   isSneakersCategory,
+  getOptimizedImageUrl,
 } from '../../../services/api';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB per file
@@ -142,6 +145,10 @@ export default function AdminProductFormView({
   const [formError, setFormError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [formSuccess, setFormSuccess] = useState(null);
+
+  // SweetAlert Feedback Modal
+  const [sweetAlert, setSweetAlert] = useState(null);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
 
   // Deactivate Product Modal
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
@@ -415,7 +422,7 @@ export default function AdminProductFormView({
     if (!normalized) {
       setVariantFeedbackError(
         isSneakers
-          ? 'Ingresá un talle US numérico (ej. 7, 7.5, 8.5).'
+          ? 'Ingresá un talle (ej. 7, 7.5, 8.5, 6.5Y (25 CM)).'
           : 'Ingresá el nombre del talle (ej. S, M, L, 42).'
       );
       return;
@@ -862,13 +869,30 @@ export default function AdminProductFormView({
         setFormSuccess(
           'Los cambios del producto fueron guardados correctamente.'
         );
+        setSweetAlert({
+          isOpen: true,
+          type: 'success',
+          title: '¡Producto modificado!',
+          message: 'Todos los cambios del producto fueron guardados correctamente.',
+          autoCloseMs: 3000,
+          onConfirm: () => setSweetAlert(null),
+        });
       } else {
         const created = await createAdminProduct(payload, filesToSend);
         queuedFiles.forEach((item) => {
           if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
         });
         setQueuedFiles([]);
-        window.location.replace(`/admin/products/${created.id}/edit?created=1`);
+        setSweetAlert({
+          isOpen: true,
+          type: 'success',
+          title: '¡Producto creado!',
+          message: `El producto "${created.title}" se creó exitosamente. Redirigiendo a edición...`,
+          autoCloseMs: 2000,
+          onConfirm: () => {
+            window.location.replace(`/admin/products/${created.id}/edit?created=1`);
+          },
+        });
       }
     } catch (err) {
       if (err?.status === 401) {
@@ -882,13 +906,58 @@ export default function AdminProductFormView({
       if (err?.fieldErrors && typeof err.fieldErrors === 'object') {
         setFieldErrors(err.fieldErrors);
       }
-      setFormError(
+      const errorText =
         err?.message ||
-        'No se pudo guardar el producto. Revisá los datos ingresados e intentá nuevamente.'
-      );
+        'No se pudo guardar el producto. Revisá los datos ingresados e intentá nuevamente.';
+      setFormError(errorText);
+      setSweetAlert({
+        isOpen: true,
+        type: 'error',
+        title: 'Error al guardar',
+        message: errorText,
+        onConfirm: () => setSweetAlert(null),
+      });
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleDeleteProductClick = () => {
+    setSweetAlert({
+      isOpen: true,
+      type: 'confirm',
+      title: '¿Eliminar este producto?',
+      message: `Esta acción es definitiva. Se eliminará el producto #${resolvedId} ("${title || 'Sin título'}") y todas sus imágenes y variantes asociadas.`,
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+      onCancel: () => setSweetAlert(null),
+      onConfirm: async () => {
+        try {
+          setIsDeletingProduct(true);
+          await deleteAdminProduct(resolvedId);
+          setSweetAlert({
+            isOpen: true,
+            type: 'success',
+            title: '¡Producto eliminado!',
+            message: 'El producto fue eliminado correctamente.',
+            autoCloseMs: 2000,
+            onConfirm: () => {
+              window.location.replace('/admin/products?deleted=1');
+            },
+          });
+        } catch (err) {
+          setSweetAlert({
+            isOpen: true,
+            type: 'error',
+            title: 'Error al eliminar',
+            message: err?.message || 'No se pudo eliminar el producto.',
+            onConfirm: () => setSweetAlert(null),
+          });
+        } finally {
+          setIsDeletingProduct(false);
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -898,6 +967,14 @@ export default function AdminProductFormView({
         setFormSuccess(
           'Producto creado exitosamente. Ya podés gestionar su galería e inventario.'
         );
+        setSweetAlert({
+          isOpen: true,
+          type: 'success',
+          title: '¡Producto creado!',
+          message: 'El artículo fue creado con éxito. Ya podés gestionar sus imágenes, talles y stock.',
+          autoCloseMs: 3500,
+          onConfirm: () => setSweetAlert(null),
+        });
         params.delete('created');
         const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''
           }`;
@@ -1896,11 +1973,11 @@ export default function AdminProductFormView({
                                 : 'border-brand-dark/12'
                                 }`}
                             >
-                              <div className="aspect-[4/5] w-full bg-[#F2F2F0] relative overflow-hidden">
+                              <div className="aspect-[4/5] w-full relative overflow-hidden flex items-center justify-center p-2">
                                 <img
-                                  src={img.imageUrl}
+                                  src={getOptimizedImageUrl(img.imageUrl, 'card')}
                                   alt={`Imagen ${idx + 1}`}
-                                  className="w-full h-full object-cover"
+                                  className="w-full h-full object-contain object-center"
                                 />
                                 <div className="absolute top-2 left-2 right-2 flex items-center justify-between gap-1">
                                   {isPrimary ? (
@@ -2053,11 +2130,11 @@ export default function AdminProductFormView({
                             key={item.id}
                             className="bg-white border border-brand-dark/15 rounded-xs overflow-hidden flex flex-col"
                           >
-                            <div className="aspect-[4/5] w-full bg-[#F2F2F0] relative">
+                            <div className="aspect-[4/5] w-full relative overflow-hidden flex items-center justify-center p-2">
                               <img
                                 src={item.previewUrl}
                                 alt={item.file.name}
-                                className="w-full h-full object-cover"
+                                className="w-full h-full object-contain object-center"
                               />
                               {!isEdit &&
                                 existingImages.length === 0 &&
@@ -2110,6 +2187,16 @@ export default function AdminProductFormView({
                       ? 'Guardar cambios del producto'
                       : 'Crear producto en el catálogo'}
                 </button>
+                {isEdit && (
+                  <button
+                    type="button"
+                    disabled={isSaving || isDeletingProduct}
+                    onClick={handleDeleteProductClick}
+                    className="w-full py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xs transition-colors cursor-pointer mt-2"
+                  >
+                    {isDeletingProduct ? 'Eliminando...' : 'Eliminar producto del catálogo'}
+                  </button>
+                )}
                 <a
                   href="/admin/products"
                   className="block w-full py-2 text-center text-xs font-semibold uppercase tracking-wider text-brand-dark/65 hover:text-brand-dark"
@@ -2121,6 +2208,9 @@ export default function AdminProductFormView({
           </div>
         </form>
       )}
+
+      {/* SweetAlert Floating Notification */}
+      <SweetAlertModal {...sweetAlert} />
 
       {/* Modal 1: Delete Individual Image Confirmation */}
       {imageToDelete && (

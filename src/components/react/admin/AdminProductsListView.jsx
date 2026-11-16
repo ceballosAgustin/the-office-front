@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import AdminShell from './AdminShell';
+import SweetAlertModal from './SweetAlertModal';
 import {
   fetchAdminProducts,
   updateAdminProductStatus,
+  deleteAdminProduct,
   fetchCategories,
   formatPrice,
+  getOptimizedImageUrl,
 } from '../../../services/api';
 
 const PLACEHOLDER_IMAGE =
@@ -77,6 +80,30 @@ export default function AdminProductsListView() {
   // Deactivation confirmation modal state
   const [productToDeactivate, setProductToDeactivate] = useState(null);
   const [togglingProductId, setTogglingProductId] = useState(null);
+
+  // SweetAlert Floating Notification State
+  const [sweetAlert, setSweetAlert] = useState(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('deleted') === '1') {
+        setSweetAlert({
+          isOpen: true,
+          type: 'success',
+          title: '¡Producto eliminado!',
+          message: 'El producto fue eliminado correctamente del catálogo.',
+          autoCloseMs: 3000,
+          onConfirm: () => setSweetAlert(null),
+        });
+        params.delete('deleted');
+        const cleanUrl = `${window.location.pathname}${
+          params.toString() ? `?${params.toString()}` : ''
+        }`;
+        window.history.replaceState({}, '', cleanUrl);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     fetchCategories()
@@ -208,6 +235,43 @@ export default function AdminProductsListView() {
     } finally {
       setTogglingProductId(null);
     }
+  };
+
+  const handleDeleteProductClick = (product) => {
+    setSweetAlert({
+      isOpen: true,
+      type: 'confirm',
+      title: '¿Eliminar producto?',
+      message: `Esta acción es definitiva. Se eliminará el producto #${product.id} ("${product.title || 'Sin título'}").`,
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+      onCancel: () => setSweetAlert(null),
+      onConfirm: async () => {
+        try {
+          await deleteAdminProduct(product.id);
+          setSweetAlert({
+            isOpen: true,
+            type: 'success',
+            title: '¡Producto eliminado!',
+            message: `El producto #${product.id} se eliminó correctamente.`,
+            autoCloseMs: 2500,
+            onConfirm: () => {
+              setSweetAlert(null);
+              loadProducts(statusFilter, categoryFilter, appliedSearch, page);
+            },
+          });
+          loadProducts(statusFilter, categoryFilter, appliedSearch, page);
+        } catch (err) {
+          setSweetAlert({
+            isOpen: true,
+            type: 'error',
+            title: 'No se pudo eliminar',
+            message: err?.message || 'Ocurrió un error al intentar eliminar el producto.',
+            onConfirm: () => setSweetAlert(null),
+          });
+        }
+      },
+    });
   };
 
   const products = pageData.content;
@@ -498,16 +562,16 @@ export default function AdminProductsListView() {
                             <div className="flex items-center gap-3.5">
                               <a
                                 href={`/admin/products/${prod.id}/edit`}
-                                className="w-12 h-15 shrink-0 bg-[#F2F2F0] rounded-xs overflow-hidden border border-brand-dark/10 block"
+                                className="w-12 h-15 shrink-0 rounded-xs overflow-hidden border border-brand-dark/10 flex items-center justify-center p-0.5 block"
                               >
                                 <img
-                                  src={primaryImg}
+                                  src={getOptimizedImageUrl(primaryImg, 'thumbnail')}
                                   alt={prod.title || 'Producto'}
                                   onError={(e) => {
                                     e.currentTarget.onerror = null;
                                     e.currentTarget.src = PLACEHOLDER_IMAGE;
                                   }}
-                                  className="w-full h-full object-cover"
+                                  className="w-full h-full object-contain object-center"
                                 />
                               </a>
                               <div className="min-w-0 space-y-0.5">
@@ -600,6 +664,14 @@ export default function AdminProductsListView() {
                                   ? 'Desactivar'
                                   : 'Activar'}
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteProductClick(prod)}
+                                title="Eliminar producto"
+                                className="px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-rose-700 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200 rounded-xs transition-colors cursor-pointer"
+                              >
+                                Eliminar
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -629,16 +701,16 @@ export default function AdminProductsListView() {
                     <div className="flex items-start gap-3.5">
                       <a
                         href={`/admin/products/${prod.id}/edit`}
-                        className="w-16 aspect-[4/5] shrink-0 bg-[#F2F2F0] rounded-xs overflow-hidden border border-brand-dark/10"
+                        className="w-16 aspect-[4/5] shrink-0 rounded-xs overflow-hidden border border-brand-dark/10 flex items-center justify-center p-0.5"
                       >
                         <img
-                          src={primaryImg}
+                          src={getOptimizedImageUrl(primaryImg, 'thumbnail')}
                           alt={prod.title || 'Producto'}
                           onError={(e) => {
                             e.currentTarget.onerror = null;
                             e.currentTarget.src = PLACEHOLDER_IMAGE;
                           }}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-contain object-center"
                         />
                       </a>
                       <div className="flex-1 min-w-0 space-y-1">
@@ -698,6 +770,13 @@ export default function AdminProductsListView() {
                           : isActive
                           ? 'Desactivar'
                           : 'Activar'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteProductClick(prod)}
+                        className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-rose-700 bg-rose-50 border border-rose-200 rounded-xs cursor-pointer"
+                      >
+                        Eliminar
                       </button>
                     </div>
                   </div>
@@ -809,6 +888,8 @@ export default function AdminProductsListView() {
           </div>
         </div>
       )}
+      {/* SweetAlert Floating Feedback */}
+      <SweetAlertModal {...sweetAlert} />
     </AdminShell>
   );
 }

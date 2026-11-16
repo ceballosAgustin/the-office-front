@@ -1,5 +1,5 @@
 ---
-import { formatPrice, formatPriceRange } from '../../services/api';
+import { formatPrice, formatPriceRange, getOptimizedImageUrl } from '../../services/api';
 
 interface Props {
   title: string;
@@ -33,17 +33,17 @@ const formattedPreviousPrice = hasDiscount ? formatPrice(previousPrice) : null;
     class="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/20 rounded-xs"
     aria-label={`${title}${category ? ' — ' + category : ''}, ${formattedPrice}`}
   >
-    <!-- Image Canvas (Consistent 4:5 ratio, neutral light background, no harsh shadows) -->
-    <div class="aspect-[4/5] w-full overflow-hidden bg-[#F2F2F0] relative">
+    <!-- Image Canvas (Consistent 4:5 ratio, clean white backdrop for uniform cards) -->
+    <div class="aspect-[4/5] w-full bg-white rounded-xs overflow-hidden relative flex items-center justify-center">
       <img
-        src={image}
+        src={getOptimizedImageUrl(image, 'card')}
         alt={title}
         loading="lazy"
         decoding="async"
-        class="w-full h-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03] select-none"
+        class="w-full h-full object-contain object-center transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04] select-none"
       />
       {badge && (
-        <span class="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 text-[8px] sm:text-[9px] md:text-[10px] font-semibold uppercase tracking-[0.18em] px-1.5 py-0.5 sm:px-2 sm:py-0.5 bg-[#1D110D]/90 text-[#FAFAFA] backdrop-blur-xs">
+        <span class="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 text-[8px] sm:text-[9px] md:text-[10px] font-semibold uppercase tracking-[0.18em] px-1.5 py-0.5 sm:px-2 sm:py-0.5 bg-[#1D110D]/90 text-[#FAFAFA] backdrop-blur-xs pointer-events-none">
           {badge}
         </span>
       )}
@@ -56,7 +56,10 @@ const formattedPreviousPrice = hasDiscount ? formatPrice(previousPrice) : null;
           {category}
         </span>
       )}
-      <h3 class="text-xs sm:text-[13px] md:text-sm font-medium tracking-tight text-brand-dark group-hover:text-brand-dark/70 transition-colors duration-150 mt-0.5 line-clamp-1 leading-snug">
+      <h3
+        title={title}
+        class="text-[11px] sm:text-[12px] md:text-[12.5px] font-medium tracking-tight text-brand-dark group-hover:text-brand-dark/70 transition-colors duration-150 mt-0.5 truncate leading-snug"
+      >
         {title}
       </h3>
       <p class="text-xs sm:text-[13px] md:text-sm font-semibold tracking-tight text-brand-dark tabular-nums mt-0.5 flex flex-wrap items-baseline gap-1.5">

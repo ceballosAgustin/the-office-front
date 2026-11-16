@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useCart } from '../../store/cartStore';
-import { formatProductSize } from '../../services/api';
+import { formatProductSize, sortProductVariants } from '../../services/api';
 
 const SINGLE_SIZE_LABELS = new Set([
   'unico',
@@ -33,9 +33,10 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
     setAddedFeedback(null);
   }, [product?.id]);
 
-  const variants = Array.isArray(product?.variants)
+  const rawVariants = Array.isArray(product?.variants)
     ? product.variants.filter((v) => v && v.isActive !== false && v.id != null)
     : [];
+  const variants = sortProductVariants(rawVariants);
   const hasVariants = variants.length > 0;
   const hasAvailableStock = variants.some((v) => Number(v.stock ?? 0) > 0);
 

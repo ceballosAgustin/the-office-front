@@ -18,8 +18,16 @@ import {
   formatPrice,
   formatPriceRange,
 } from '../utils/currency';
+import { getOptimizedImageUrl, type ImageVariant } from '../utils/images';
 
-export { formatArgentinaDateTime, formatArgentinaDate, formatPrice, formatPriceRange };
+export {
+  formatArgentinaDateTime,
+  formatArgentinaDate,
+  formatPrice,
+  formatPriceRange,
+  getOptimizedImageUrl,
+  type ImageVariant,
+};
 
 export type InquiryStatus = 'NEW' | 'IN_PROGRESS' | 'CONVERTED' | 'NOT_CONVERTED';
 
@@ -382,25 +390,45 @@ export function getApiBaseUrl(): string {
 
     const cleanUrl = envUrl.trim().replace(/\/+$/, '');
 
-    // Validación 1: Debe utilizar HTTPS
+    // Validación 1: No debe utilizar localhost, 127.0.0.1 ni interfaces locales/loopback en despliegues
+    const isLocalAddress =
+      cleanUrl.includes('localhost') ||
+      cleanUrl.includes('127.0.0.1') ||
+      cleanUrl.includes('0.0.0.0') ||
+      cleanUrl.includes('::1');
+
+    if (isLocalAddress) {
+      const isHostingOrCI =
+        typeof process !== 'undefined' &&
+        process.env &&
+        Boolean(
+          process.env.CI ||
+          process.env.NETLIFY ||
+          process.env.VERCEL ||
+          process.env.CF_PAGES ||
+          process.env.STRICT_PROD === 'true'
+        );
+
+      if (isHostingOrCI) {
+        const errorMsg =
+          `[The Office BA] Error de configuración en producción: PUBLIC_API_URL no puede apuntar a localhost ni a direcciones locales (recibido: "${cleanUrl}"). ` +
+          `Debe apuntar a la API de producción configurada (${EXPECTED_PROD_API_URL}).`;
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      console.warn(
+        `[The Office BA] Advertencia: PUBLIC_API_URL apunta a entorno local (${cleanUrl}) durante build local. ` +
+        `En hosting/CI de producción se exigirá estrictamente ${EXPECTED_PROD_API_URL}.`
+      );
+      return cleanUrl;
+    }
+
+    // Validación 2: Debe utilizar HTTPS
     if (!cleanUrl.startsWith('https://')) {
       const errorMsg =
         `[The Office BA] Error de configuración en producción: PUBLIC_API_URL debe utilizar el protocolo seguro HTTPS (recibido: "${cleanUrl}"). ` +
         `Valor esperado: ${EXPECTED_PROD_API_URL}`;
-      console.error(errorMsg);
-      throw new Error(errorMsg);
-    }
-
-    // Validación 2: No debe utilizar localhost, 127.0.0.1 ni interfaces locales/loopback
-    if (
-      cleanUrl.includes('localhost') ||
-      cleanUrl.includes('127.0.0.1') ||
-      cleanUrl.includes('0.0.0.0') ||
-      cleanUrl.includes('::1')
-    ) {
-      const errorMsg =
-        `[The Office BA] Error de configuración en producción: PUBLIC_API_URL no puede apuntar a localhost ni a direcciones locales (recibido: "${cleanUrl}"). ` +
-        `Debe apuntar a la API de producción configurada (${EXPECTED_PROD_API_URL}).`;
       console.error(errorMsg);
       throw new Error(errorMsg);
     }
@@ -1411,6 +1439,17 @@ export async function updateAdminProductStatus(
 }
 
 /**
+ * Deletes a product permanently: DELETE /api/admin/products/{id} (ROLE_ADMIN)
+ */
+export async function deleteAdminProduct(
+  id: string | number
+): Promise<{ message?: string }> {
+  return fetchAdminJson<{ message?: string }>(`/admin/products/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
  * Deletes an individual product image by internal ID: DELETE /api/admin/products/{productId}/images/{imageId}
  */
 export async function deleteAdminProductImage(
@@ -1968,8 +2007,74 @@ export function normalizeSneakerSizeValue(raw: string | number | null | undefine
   if (raw == null) return '';
   let val = String(raw).trim();
   val = val.replace(/\s*(?:us|US)$/i, '').trim();
-  val = val.replace(',', '.');
+  val = val.replace(/,/g, '.');
   return val;
+}
+
+export const APPAREL_SIZE_HIERARCHY = [
+  'XXS', '2XS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', 'XXXL', '3XL', '4XL', 'ÚNICO', 'UNICO', 'ONE SIZE'
+];
+
+/**
+ * Checks if a given size string corresponds to a shoe/sneaker number
+ * (e.g. "6", "6.5", "7", "7.5", "11", "6.5Y", "6.5Y (25 CM)", "42 EUR").
+ */
+export function isShoeSize(size: string | null | undefined): boolean {
+  if (!size) return false;
+  const clean = String(size).trim();
+  return /^[0-9]+(?:\.[0-9]+)?/i.test(clean.replace(',', '.'));
+}
+
+/**
+ * Extracts a numeric prefix from a size for ordering (e.g. "6.5Y" -> 6.5, "7" -> 7).
+ */
+export function parseSizeLeadingNumber(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const match = String(s).trim().replace(',', '.').match(/^([0-9]+(?:\.[0-9]+)?)/);
+  if (!match) return null;
+  const val = parseFloat(match[1]);
+  return Number.isNaN(val) ? null : val;
+}
+
+/**
+ * Deterministically compares two size strings from smallest to largest:
+ * - Textile/apparel sizes: XXS < XS < S < M < L < XL < XXL < 2XL < 3XL
+ * - Numeric / sneaker sizes: 6 < 6.5 < 7 < 7.5 < 8 < 8.5 < ... < 11
+ */
+export function compareProductSizes(a: string | null | undefined, b: string | null | undefined): number {
+  const cleanA = String(a || '').trim();
+  const cleanB = String(b || '').trim();
+  const numA = parseSizeLeadingNumber(cleanA);
+  const numB = parseSizeLeadingNumber(cleanB);
+
+  // Both are numeric/sneaker sizes: sort ascending by number
+  if (numA !== null && numB !== null) {
+    if (numA !== numB) return numA - numB;
+    return cleanA.localeCompare(cleanB, undefined, { numeric: true, sensitivity: 'base' });
+  }
+  // If one is numeric and one is text apparel, keep apparel in textile hierarchy
+  const idxA = APPAREL_SIZE_HIERARCHY.indexOf(cleanA.toUpperCase());
+  const idxB = APPAREL_SIZE_HIERARCHY.indexOf(cleanB.toUpperCase());
+
+  if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+  if (idxA !== -1) return -1;
+  if (idxB !== -1) return 1;
+
+  if (numA !== null) return -1;
+  if (numB !== null) return 1;
+
+  // Fallback natural sort
+  return cleanA.localeCompare(cleanB, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+export function sortProductSizes(sizes: string[]): string[] {
+  if (!Array.isArray(sizes)) return [];
+  return [...sizes].sort(compareProductSizes);
+}
+
+export function sortProductVariants<T extends { size?: string | null }>(variants: T[]): T[] {
+  if (!Array.isArray(variants)) return [];
+  return [...variants].sort((va, vb) => compareProductSizes(va.size, vb.size));
 }
 
 /**

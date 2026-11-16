@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getOptimizedImageUrl } from '../../utils/images';
 
 export default function ProductGallery({ images = [], title = 'Producto' }) {
   const validImages = Array.isArray(images)
@@ -71,7 +72,7 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
 
   if (totalImages === 0) {
     return (
-      <div className="aspect-[4/5] w-full bg-[#F2F2F0] rounded-xs flex items-center justify-center text-brand-dark/40 text-sm">
+      <div className="aspect-[4/3] max-h-[500px] w-full bg-brand-dark/5 border border-brand-dark/10 rounded-xs flex items-center justify-center text-brand-dark/40 text-sm">
         No hay imagen disponible
       </div>
     );
@@ -81,13 +82,13 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
 
   return (
     <div className="flex flex-col gap-3 sm:gap-4 w-full">
-      {/* Main Image Frame (4:5 proportion, clean neutral backdrop) */}
-      <div className="relative aspect-[4/5] w-full overflow-hidden bg-[#F2F2F0] rounded-xs">
+      {/* Main Image Frame (dynamically fits image proportions without forced 4:5 vertical margins) */}
+      <div className="relative w-full overflow-hidden rounded-xs flex items-center justify-center">
         <img
           key={currentImage}
-          src={currentImage}
+          src={getOptimizedImageUrl(currentImage, 'detail')}
           alt={`${title} — Vista ${safeIndex + 1} de ${totalImages}`}
-          className="w-full h-full object-cover transition-opacity duration-300 ease-out select-none"
+          className="w-full h-auto max-h-[75vh] sm:max-h-[600px] object-contain object-center transition-opacity duration-300 ease-out select-none"
           loading="eager"
           decoding="async"
         />
@@ -139,7 +140,7 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
               </svg>
             </button>
 
-            <div className="absolute bottom-3 right-3 px-2 py-0.5 rounded-full bg-[#1D110D]/75 backdrop-blur-xs text-[#FAFAFA] text-[10px] font-mono tracking-wider tabular-nums pointer-events-none">
+            <div className="absolute bottom-3 right-3 px-2 py-0.5 rounded-full bg-[#1D110D]/75 backdrop-blur-xs text-[#FAFAFA] text-[10px] font-mono tracking-wider tabular-nums pointer-events-none z-10">
               {safeIndex + 1} / {totalImages}
             </div>
           </>
@@ -163,16 +164,16 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
                 aria-selected={isSelected}
                 aria-label={`Ver imagen ${idx + 1} de ${title}`}
                 onClick={() => setSelectedIndex(idx)}
-                className={`relative aspect-[4/5] w-16 sm:w-20 shrink-0 overflow-hidden rounded-xs bg-[#F2F2F0] transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark ${
+                className={`relative aspect-square w-16 sm:w-20 shrink-0 overflow-hidden rounded-xs transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark flex items-center justify-center p-0.5 ${
                   isSelected
                     ? 'ring-2 ring-brand-dark opacity-100'
-                    : 'opacity-60 hover:opacity-100 ring-1 ring-brand-dark/10'
+                    : 'opacity-60 hover:opacity-100 ring-1 ring-brand-dark/15'
                 }`}
               >
                 <img
-                  src={img}
+                  src={getOptimizedImageUrl(img, 'thumbnail')}
                   alt={`Miniatura ${idx + 1}`}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain object-center select-none"
                   loading="lazy"
                 />
               </button>
