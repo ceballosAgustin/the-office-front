@@ -77,8 +77,22 @@ export interface BackendProduct {
   brandName?: string | null;
   brandSlug?: string | null;
   gender?: ProductGender | null;
+  /** Position (1..20) in the home "Recién ingresados" section; null when not in it. */
+  newInPosition?: number | null;
   images?: BackendProductImage[];
   variants?: BackendVariant[];
+}
+
+/** Max products in the home "Recién ingresados" section (mirrors backend ProductService.MAX_NEW_IN_PRODUCTS). */
+export const MAX_NEW_IN_PRODUCTS = 20;
+
+/** An occupied position of the "Recién ingresados" section (admin). */
+export interface NewInSlot {
+  position: number;
+  productId: number;
+  title: string;
+  isActive: boolean;
+  imageUrl?: string | null;
 }
 
 export interface AdminProductVariantPayload {
@@ -95,6 +109,8 @@ export interface AdminProductRequestPayload {
   categoryId: number;
   brandId?: number | null;
   gender?: ProductGender | null;
+  /** Always sent: null removes the product from "Recién ingresados". */
+  newInPosition?: number | null;
   variants?: AdminProductVariantPayload[];
 }
 
@@ -775,6 +791,32 @@ export async function fetchProductById(id: string | number): Promise<Product> {
 }
 
 /**
+ * Home "Recién ingresados" section: active products chosen by the admin, ordered by position.
+ * GET /api/products/new-in
+ */
+export async function fetchNewInProducts(): Promise<Product[]> {
+  const baseUrl = getApiBaseUrl();
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/products/new-in`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
+  } catch {
+    throw new ApiError(`No se pudo conectar con el backend (${baseUrl}).`, 0);
+  }
+  if (!res.ok) {
+    throw new ApiError(
+      `Error al consultar los recién ingresados (${res.status} ${res.statusText})`,
+      res.status
+    );
+  }
+  const raw = await res.json();
+  return Array.isArray(raw) ? raw.map((p: BackendProduct) => mapBackendProduct(p)) : [];
+}
+
+/**
  * Fetch all categories from backend.
  */
 export async function fetchCategories(): Promise<BackendCategory[]> {
@@ -1345,6 +1387,14 @@ export async function fetchAdminProducts(options?: {
 }
 
 /**
+ * Occupied positions of the home "Recién ingresados" section: GET /api/admin/products/new-in
+ */
+export async function fetchAdminNewInSlots(): Promise<NewInSlot[]> {
+  const data = await fetchAdminJson<NewInSlot[]>('/admin/products/new-in', { method: 'GET' });
+  return Array.isArray(data) ? data : [];
+}
+
+/**
  * Fetches full admin product detail by ID (including inactive variants): GET /api/admin/products/{id}
  */
 export async function fetchAdminProductById(
@@ -1369,6 +1419,7 @@ export async function createAdminProduct(
     price: Number(payload.price),
     categoryId: Number(payload.categoryId),
     brandId: payload.brandId !== undefined ? (payload.brandId != null ? Number(payload.brandId) : null) : undefined,
+    newInPosition: payload.newInPosition != null ? Number(payload.newInPosition) : null,
   };
 
   if (payload.gender !== undefined) {
@@ -1416,6 +1467,8 @@ export async function updateAdminProduct(
     price: Number(payload.price),
     categoryId: Number(payload.categoryId),
     brandId: payload.brandId !== undefined ? (payload.brandId != null ? Number(payload.brandId) : null) : undefined,
+    // Always sent: the backend treats a missing/null value as "not in Recién ingresados".
+    newInPosition: payload.newInPosition != null ? Number(payload.newInPosition) : null,
   };
 
   if (payload.gender !== undefined) {

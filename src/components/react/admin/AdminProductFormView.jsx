@@ -12,6 +12,8 @@ import {
   reorderAdminProductImages,
   fetchCategories,
   fetchAdminBrands,
+  fetchAdminNewInSlots,
+  MAX_NEW_IN_PRODUCTS,
   formatPrice,
   normalizeSneakerSizeValue,
   isSneakersCategory,
@@ -127,6 +129,12 @@ export default function AdminProductFormView({
   const [brandsLoaded, setBrandsLoaded] = useState(false);
   const [initialBrandSnapshot, setInitialBrandSnapshot] = useState(null);
   const [isActiveProduct, setIsActiveProduct] = useState(true);
+
+  // "Recién ingresados" (home new-in section)
+  const [newInEnabled, setNewInEnabled] = useState(false);
+  const [newInPosition, setNewInPosition] = useState('');
+  const [newInSlots, setNewInSlots] = useState([]);
+  const [newInSlotsError, setNewInSlotsError] = useState(null);
   const [hadNullCategoryOnLoad, setHadNullCategoryOnLoad] = useState(false);
 
   // Variants & Sizing Mode State
@@ -184,6 +192,8 @@ export default function AdminProductFormView({
         : null
     );
     setIsActiveProduct(prod.isActive !== false);
+    setNewInEnabled(prod.newInPosition != null);
+    setNewInPosition(prod.newInPosition != null ? String(prod.newInPosition) : '');
 
     const rawVariants = Array.isArray(prod.variants) ? prod.variants : [];
     const mappedVariants = rawVariants.map((v, idx) => ({
@@ -216,6 +226,20 @@ export default function AdminProductFormView({
     setExistingImages(sortedImages);
   }, []);
 
+  // Occupied "Recién ingresados" positions; failures only disable the picker, never the form.
+  const loadNewInSlots = useCallback(async () => {
+    try {
+      const slots = await fetchAdminNewInSlots();
+      setNewInSlots(slots);
+      setNewInSlotsError(null);
+    } catch (err) {
+      setNewInSlots([]);
+      setNewInSlotsError(
+        err?.message || 'No se pudieron cargar las posiciones de Recién ingresados.'
+      );
+    }
+  }, []);
+
   const loadFormResources = useCallback(async () => {
     if (isEdit && !hasResolvedUrl) return;
 
@@ -230,6 +254,7 @@ export default function AdminProductFormView({
 
     setIsLoadingInitial(true);
     setLoadError(null);
+    loadNewInSlots();
 
     try {
       const catsPromise = fetchCategories();
@@ -342,6 +367,27 @@ export default function AdminProductFormView({
 
   const selectedCategoryObj = categories.find((c) => String(c.id) === String(categoryId));
   const isSneakers = isSneakersCategory(selectedCategoryObj);
+
+  // "Recién ingresados": positions taken by OTHER products (this product's own slot stays selectable)
+  const newInTakenByOthers = new Map(
+    newInSlots
+      .filter((s) => !isEdit || String(s.productId) !== String(resolvedId))
+      .map((s) => [Number(s.position), s])
+  );
+  const newInPositions = Array.from({ length: MAX_NEW_IN_PRODUCTS }, (_, i) => i + 1);
+  const newInFreePositions = newInPositions.filter((p) => !newInTakenByOthers.has(p));
+  const isNewInFull = newInFreePositions.length === 0;
+  const newInOccupiedCount = newInSlots.length;
+
+  const handleToggleNewIn = (checked) => {
+    setNewInEnabled(checked);
+    if (checked && !newInPosition && newInFreePositions.length > 0) {
+      setNewInPosition(String(newInFreePositions[0]));
+    }
+    if (fieldErrors.newInPosition) {
+      setFieldErrors((prev) => ({ ...prev, newInPosition: undefined }));
+    }
+  };
 
   // Switch between Multi-size and Single-size ('Único' / 'One Size')
   const handleSwitchSizingMode = (nextMode) => {
@@ -811,6 +857,26 @@ export default function AdminProductFormView({
       return;
     }
 
+    // "Recién ingresados" position
+    let resolvedNewInPosition = null;
+    if (newInEnabled) {
+      const pos = Number(newInPosition);
+      if (!Number.isInteger(pos) || pos < 1 || pos > MAX_NEW_IN_PRODUCTS) {
+        const msg = `Elegí una posición de Recién ingresados entre 1 y ${MAX_NEW_IN_PRODUCTS}.`;
+        setFieldErrors((prev) => ({ ...prev, newInPosition: msg }));
+        setFormError(msg);
+        return;
+      }
+      const takenBy = newInTakenByOthers.get(pos);
+      if (takenBy) {
+        const msg = `La posición ${pos} de Recién ingresados ya está ocupada por "${takenBy.title}". Elegí otra.`;
+        setFieldErrors((prev) => ({ ...prev, newInPosition: msg }));
+        setFormError(msg);
+        return;
+      }
+      resolvedNewInPosition = pos;
+    }
+
     // Validate variants if creating or if variants were modified
     const shouldSendVariants = !isEdit || variantsDirty;
     if (shouldSendVariants) {
@@ -858,6 +924,7 @@ export default function AdminProductFormView({
         categoryId: numericCategoryId,
         brandId: brandId && brandId.trim() !== '' ? Number(brandId) : null,
         gender: gender || 'UNISEX',
+        newInPosition: resolvedNewInPosition,
         variants: shouldSendVariants
           ? variants.map((v) => ({
             id: v.id != null ? Number(v.id) : undefined,
@@ -880,6 +947,7 @@ export default function AdminProductFormView({
         revokeAllPreviewUrls();
         setQueuedFiles([]);
         syncProductDataToState(updated);
+        loadNewInSlots();
         setFormSuccess(
           'Los cambios del producto fueron guardados correctamente.'
         );
@@ -913,6 +981,10 @@ export default function AdminProductFormView({
       }
       if (err?.fieldErrors && typeof err.fieldErrors === 'object') {
         setFieldErrors(err.fieldErrors);
+      }
+      if (err?.status === 409) {
+        // e.g. another admin took the chosen "Recién ingresados" position meanwhile
+        loadNewInSlots();
       }
       const errorText =
         err?.message ||
@@ -1502,6 +1574,85 @@ export default function AdminProductFormView({
                     {fieldErrors.description && (
                       <p className="text-xs text-red-600">
                         {fieldErrors.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* "Recién ingresados" (home new-in section) */}
+                  <div className="rounded-xs border border-brand-dark/10 bg-brand-dark/[0.02] p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <label className="flex items-start gap-3 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 accent-brand-dark"
+                          checked={newInEnabled}
+                          disabled={isSaving || (!newInEnabled && isNewInFull)}
+                          onChange={(e) => handleToggleNewIn(e.target.checked)}
+                        />
+                        <span>
+                          <span className="block text-sm font-semibold text-brand-dark">
+                            Mostrar en &ldquo;Recién ingresados&rdquo;
+                          </span>
+                          <span className="block text-[11px] text-brand-dark/55 leading-snug">
+                            Sección destacada del inicio. La posición 1 aparece primero.
+                          </span>
+                        </span>
+                      </label>
+                      <span className="shrink-0 text-[11px] font-mono text-brand-dark/50">
+                        {newInOccupiedCount}/{MAX_NEW_IN_PRODUCTS} en uso
+                      </span>
+                    </div>
+
+                    {!newInEnabled && isNewInFull && (
+                      <p className="text-[11px] text-amber-800 leading-snug">
+                        La sección ya tiene {MAX_NEW_IN_PRODUCTS} productos. Para sumar este, primero quitá otro producto de Recién ingresados.
+                      </p>
+                    )}
+
+                    {newInEnabled && (
+                      <div className="space-y-1.5">
+                        <label
+                          htmlFor="product-new-in-position"
+                          className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
+                        >
+                          Posición <span className="text-red-600">*</span>
+                        </label>
+                        <select
+                          id="product-new-in-position"
+                          disabled={isSaving}
+                          value={newInPosition}
+                          onChange={(e) => {
+                            setNewInPosition(e.target.value);
+                            if (fieldErrors.newInPosition) {
+                              setFieldErrors((prev) => ({ ...prev, newInPosition: undefined }));
+                            }
+                          }}
+                          aria-invalid={fieldErrors.newInPosition ? 'true' : undefined}
+                          className={`form-select w-full sm:max-w-sm h-11 pl-3.5 pr-9 text-base sm:text-sm ${fieldErrors.newInPosition ? 'form-input-error' : ''}`}
+                        >
+                          <option value="" disabled>
+                            Elegí una posición
+                          </option>
+                          {newInPositions.map((pos) => {
+                            const takenBy = newInTakenByOthers.get(pos);
+                            return (
+                              <option key={pos} value={String(pos)} disabled={Boolean(takenBy)}>
+                                {takenBy
+                                  ? `${pos} — En uso: ${takenBy.title}${takenBy.isActive === false ? ' (inactivo)' : ''}`
+                                  : `${pos} — Libre`}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        {fieldErrors.newInPosition && (
+                          <p className="text-xs text-red-600">{fieldErrors.newInPosition}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {newInSlotsError && (
+                      <p className="text-[11px] text-amber-800 leading-snug">
+                        {newInSlotsError} Igual podés guardar: si la posición está ocupada, el sistema te avisa.
                       </p>
                     )}
                   </div>

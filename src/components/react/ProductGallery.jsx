@@ -7,17 +7,50 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
     : [];
 
   const [selectedIndex, setSelectedIndex] = useState(0);
+  // Image actually rendered in the main frame. It only changes once the next image is fully
+  // downloaded and decoded, so switching images never blanks the frame (no flicker).
+  const [displayedSrc, setDisplayedSrc] = useState(null);
 
   // Reset selected image index whenever the product's image collection changes
   const imagesSignature = validImages.join('|');
   useEffect(() => {
     setSelectedIndex(0);
+    setDisplayedSrc(null);
+    // Preload every detail-size image of this product so later switches are instant
+    validImages.forEach((url) => {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = getOptimizedImageUrl(url, 'detail');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imagesSignature]);
 
   const totalImages = validImages.length;
   const hasMultipleImages = totalImages > 1;
   const safeIndex =
     selectedIndex >= 0 && selectedIndex < totalImages ? selectedIndex : 0;
+  const targetSrc =
+    totalImages > 0 ? getOptimizedImageUrl(validImages[safeIndex] || validImages[0], 'detail') : '';
+
+  useEffect(() => {
+    if (!targetSrc) return;
+    let cancelled = false;
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = targetSrc;
+    const show = () => {
+      if (!cancelled) setDisplayedSrc(targetSrc);
+    };
+    if (typeof img.decode === 'function') {
+      img.decode().then(show, show);
+    } else {
+      img.onload = show;
+      img.onerror = show;
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [targetSrc]);
 
   const handlePrevious = useCallback(() => {
     if (totalImages <= 1) return;
@@ -59,8 +92,6 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
     );
   }
 
-  const currentImage = validImages[safeIndex] || validImages[0];
-
   return (
     <div
       className="flex flex-col gap-3 sm:gap-4 w-full focus-visible:outline-none"
@@ -75,14 +106,22 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
     >
       {/* Main Image Frame (dynamically fits image proportions without forced 4:5 vertical margins) */}
       <div className="relative w-full overflow-hidden rounded-xs flex items-center justify-center">
-        <img
-          key={currentImage}
-          src={getOptimizedImageUrl(currentImage, 'detail')}
-          alt={`${title} — Vista ${safeIndex + 1} de ${totalImages}`}
-          className="w-full h-auto max-h-[75vh] sm:max-h-[600px] object-contain object-center transition-opacity duration-300 ease-out select-none"
-          loading="eager"
-          decoding="async"
-        />
+        {displayedSrc ? (
+          <img
+            src={displayedSrc}
+            alt={`${title} — Vista ${safeIndex + 1} de ${totalImages}`}
+            className="w-full h-auto max-h-[75vh] sm:max-h-[600px] object-contain object-center select-none animate-fadeIn"
+            loading="eager"
+            decoding="async"
+          />
+        ) : (
+          // Reserved space while the first image loads (avoids the frame collapsing and jumping)
+          <div
+            className="w-full aspect-[4/5] max-h-[75vh] sm:max-h-[600px] bg-brand-dark/5 animate-pulse"
+            role="img"
+            aria-label={`Cargando imagen de ${title}`}
+          />
+        )}
 
         {/* Left & Right Arrow Controls (only when product has > 1 image) */}
         {hasMultipleImages && (

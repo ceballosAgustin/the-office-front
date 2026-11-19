@@ -1,6 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import CatalogSection from '../components/react/CatalogSection.jsx';
+import NewInSection from '../components/react/NewInSection.jsx';
 ---
 
 <Layout
@@ -80,6 +81,9 @@ import CatalogSection from '../components/react/CatalogSection.jsx';
     </div>
   </section>
 
-  <!-- Interactive Catalog Connected to Backend API -->
+  <!-- "Recién ingresados": up to 20 products picked and ordered by the admin -->
+  <NewInSection client:load />
+
+  <!-- Interactive Catalog Connected to Backend API (kept below until the home layout is redefined) -->
   <CatalogSection client:load />
 </Layout>

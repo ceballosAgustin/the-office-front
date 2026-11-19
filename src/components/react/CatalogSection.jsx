@@ -8,10 +8,10 @@ import {
   parseCatalogParams,
   formatProductSize,
   isSneakersCategory,
-  getOptimizedImageUrl,
   isShoeSize,
   sortProductSizes,
 } from '../../services/api';
+import ProductGridCard, { GENDER_LABELS } from './ProductGridCard';
 
 const CATALOG_PAGE_SIZE = 50;
 
@@ -33,6 +33,84 @@ function mergeUniqueProducts(existing, incoming, sortByIdDesc) {
     merged.sort((a, b) => Number(b.id) - Number(a.id));
   }
   return merged;
+}
+
+const VISIBLE_SIZES_COLLAPSED = 5;
+
+/**
+ * Size filter row. "+ Más" expands the remaining sizes inline and they wrap onto new lines,
+ * so the row never overflows the viewport (the old absolute dropdown caused horizontal scroll).
+ */
+function SizeFilterGroup({
+  label,
+  sizes,
+  selectedSizes,
+  onToggleSize,
+  expanded,
+  onToggleExpanded,
+  formatLabel,
+  titlePrefix,
+  minWidthClass,
+}) {
+  const isSelected = (size) =>
+    selectedSizes.some((s) => s.trim().toLowerCase() === size.trim().toLowerCase());
+  const hiddenSizes = sizes.slice(VISIBLE_SIZES_COLLAPSED);
+  const visibleSizes = expanded ? sizes : sizes.slice(0, VISIBLE_SIZES_COLLAPSED);
+  const hasActiveHidden = !expanded && hiddenSizes.some(isSelected);
+
+  return (
+    <div className="flex items-start gap-1.5 min-w-0 max-w-full">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-dark/40 mr-1 shrink-0 leading-7">
+        {label}
+      </span>
+      <div className="flex flex-wrap items-center gap-1 min-w-0">
+        {visibleSizes.map((size) => {
+          const selected = isSelected(size);
+          const display = formatLabel(size);
+          return (
+            <button
+              key={`size-${size}`}
+              type="button"
+              onClick={() => onToggleSize(size)}
+              aria-pressed={selected}
+              title={`${titlePrefix} ${display}`}
+              className={`${minWidthClass} h-7 px-2 flex items-center justify-center text-xs tracking-tight rounded-xs border transition-colors cursor-pointer tabular-nums ${
+                selected
+                  ? 'bg-brand-dark text-white border-brand-dark font-semibold'
+                  : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
+              }`}
+            >
+              {display}
+            </button>
+          );
+        })}
+
+        {hiddenSizes.length > 0 && (
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            aria-expanded={expanded}
+            className={`h-7 px-2 flex items-center gap-1 text-xs tracking-tight rounded-xs border transition-colors cursor-pointer whitespace-nowrap ${
+              hasActiveHidden
+                ? 'bg-brand-dark text-white border-brand-dark font-semibold'
+                : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
+            }`}
+          >
+            <span>{expanded ? 'Menos' : `+ Más (${hiddenSizes.length})`}</span>
+            <svg
+              className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function CatalogSection() {
@@ -61,35 +139,9 @@ export default function CatalogSection() {
   const [availableSizes, setAvailableSizes] = useState([]);
   const [isLoadingSizes, setIsLoadingSizes] = useState(false);
 
-  // Dropdown states for sizes
-  const [openClothingDropdown, setOpenClothingDropdown] = useState(false);
-  const [openSneakerDropdown, setOpenSneakerDropdown] = useState(false);
-  const clothingDropdownRef = useRef(null);
-  const sneakerDropdownRef = useRef(null);
-
-  // Close dropdowns when clicking outside or pressing Escape
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (clothingDropdownRef.current && !clothingDropdownRef.current.contains(e.target)) {
-        setOpenClothingDropdown(false);
-      }
-      if (sneakerDropdownRef.current && !sneakerDropdownRef.current.contains(e.target)) {
-        setOpenSneakerDropdown(false);
-      }
-    };
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        setOpenClothingDropdown(false);
-        setOpenSneakerDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, []);
+  // "+ Más" expansion of the size filters (inline, wraps to new lines)
+  const [showAllClothingSizes, setShowAllClothingSizes] = useState(false);
+  const [showAllSneakerSizes, setShowAllSneakerSizes] = useState(false);
 
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -580,11 +632,7 @@ export default function CatalogSection() {
     return match ? match.name : selectedBrand.charAt(0).toUpperCase() + selectedBrand.slice(1);
   }, [brands, selectedBrand]);
 
-  const genderLabelMap = {
-    MEN: 'Hombre',
-    WOMEN: 'Mujer',
-    UNISEX: 'Unisex',
-  };
+  const genderLabelMap = GENDER_LABELS;
 
   const hasAnyActiveFilter = Boolean(
     searchQuery ||
@@ -681,203 +729,34 @@ export default function CatalogSection() {
             })}
           </div>
 
-          {/* Sizes / Numbers Filter Options */}
+          {/* Sizes / Numbers Filter Options (inline expansion: wraps instead of overflowing) */}
           {((clothingSizes && clothingSizes.length > 0) || (sneakerSizes && sneakerSizes.length > 0)) && (
-            <div className="flex flex-wrap items-center gap-y-2.5 gap-x-5">
-              {/* Clothing Sizes (Talles) */}
+            <div className="flex flex-wrap items-start gap-y-2.5 gap-x-5 min-w-0 max-w-full">
               {clothingSizes.length > 0 && (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-dark/40 mr-1 shrink-0">
-                    Talles:
-                  </span>
-                  <div className="flex items-center gap-1">
-                    {clothingSizes.slice(0, 5).map((size) => {
-                      const isSelected = selectedSizes.some(
-                        (s) => s.trim().toLowerCase() === size.trim().toLowerCase()
-                      );
-                      return (
-                        <button
-                          key={`size-${size}`}
-                          type="button"
-                          onClick={() => handleToggleSize(size)}
-                          aria-pressed={isSelected}
-                          title={`Filtrar por talle ${size}`}
-                          className={`min-w-[32px] h-7 px-2 flex items-center justify-center text-xs tracking-tight rounded-xs border transition-colors cursor-pointer tabular-nums ${
-                            isSelected
-                              ? 'bg-brand-dark text-white border-brand-dark font-semibold'
-                              : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
-                          }`}
-                        >
-                          {size}
-                        </button>
-                      );
-                    })}
-
-                    {/* Dropdown for remaining clothing sizes if > 5 */}
-                    {clothingSizes.length > 5 && (
-                      <div className="relative" ref={clothingDropdownRef}>
-                        {(() => {
-                          const moreSizes = clothingSizes.slice(5);
-                          const hasActiveInMore = moreSizes.some((s) =>
-                            selectedSizes.some((sel) => sel.trim().toLowerCase() === s.trim().toLowerCase())
-                          );
-                          return (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOpenClothingDropdown((prev) => !prev);
-                                  setOpenSneakerDropdown(false);
-                                }}
-                                className={`h-7 px-2 flex items-center gap-1 text-xs tracking-tight rounded-xs border transition-colors cursor-pointer whitespace-nowrap ${
-                                  hasActiveInMore
-                                    ? 'bg-brand-dark text-white border-brand-dark font-semibold'
-                                    : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
-                                }`}
-                                aria-expanded={openClothingDropdown}
-                                title="Más talles disponibles"
-                              >
-                                <span>+ Más ({moreSizes.length})</span>
-                                <svg
-                                  className={`w-3 h-3 transition-transform ${openClothingDropdown ? 'rotate-180' : ''}`}
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                </svg>
-                              </button>
-
-                              {openClothingDropdown && (
-                                <div className="absolute right-0 sm:right-auto sm:left-0 top-full mt-1.5 z-40 bg-white border border-brand-dark/15 shadow-xl rounded-xs p-2 min-w-[170px] max-h-56 overflow-y-auto grid grid-cols-3 gap-1.5">
-                                  {moreSizes.map((size) => {
-                                    const isSelected = selectedSizes.some(
-                                      (s) => s.trim().toLowerCase() === size.trim().toLowerCase()
-                                    );
-                                    return (
-                                      <button
-                                        key={`more-size-${size}`}
-                                        type="button"
-                                        onClick={() => handleToggleSize(size)}
-                                        aria-pressed={isSelected}
-                                        className={`h-7 px-2 flex items-center justify-center text-xs tracking-tight rounded-xs border transition-colors cursor-pointer tabular-nums ${
-                                          isSelected
-                                            ? 'bg-brand-dark text-white border-brand-dark font-semibold'
-                                            : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
-                                        }`}
-                                      >
-                                        {size}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <SizeFilterGroup
+                  label="Talles:"
+                  sizes={clothingSizes}
+                  selectedSizes={selectedSizes}
+                  onToggleSize={handleToggleSize}
+                  expanded={showAllClothingSizes}
+                  onToggleExpanded={() => setShowAllClothingSizes((prev) => !prev)}
+                  formatLabel={(size) => size}
+                  titlePrefix="Filtrar por talle"
+                  minWidthClass="min-w-[32px]"
+                />
               )}
-
-              {/* Sneaker Numbers (Números) */}
               {sneakerSizes.length > 0 && (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-dark/40 mr-1 shrink-0">
-                    Números:
-                  </span>
-                  <div className="flex items-center gap-1">
-                    {sneakerSizes.slice(0, 5).map((size) => {
-                      const isSelected = selectedSizes.some(
-                        (s) => s.trim().toLowerCase() === size.trim().toLowerCase()
-                      );
-                      const displaySize = formatProductSize(size, 'sneakers');
-                      return (
-                        <button
-                          key={`shoe-size-${size}`}
-                          type="button"
-                          onClick={() => handleToggleSize(size)}
-                          aria-pressed={isSelected}
-                          title={`Filtrar por número ${displaySize}`}
-                          className={`min-w-[34px] h-7 px-2 flex items-center justify-center text-xs tracking-tight rounded-xs border transition-colors cursor-pointer tabular-nums ${
-                            isSelected
-                              ? 'bg-brand-dark text-white border-brand-dark font-semibold'
-                              : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
-                          }`}
-                        >
-                          {displaySize}
-                        </button>
-                      );
-                    })}
-
-                    {/* Dropdown for remaining sneaker sizes if > 5 */}
-                    {sneakerSizes.length > 5 && (
-                      <div className="relative" ref={sneakerDropdownRef}>
-                        {(() => {
-                          const moreSizes = sneakerSizes.slice(5);
-                          const hasActiveInMore = moreSizes.some((s) =>
-                            selectedSizes.some((sel) => sel.trim().toLowerCase() === s.trim().toLowerCase())
-                          );
-                          return (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOpenSneakerDropdown((prev) => !prev);
-                                  setOpenClothingDropdown(false);
-                                }}
-                                className={`h-7 px-2 flex items-center gap-1 text-xs tracking-tight rounded-xs border transition-colors cursor-pointer whitespace-nowrap ${
-                                  hasActiveInMore
-                                    ? 'bg-brand-dark text-white border-brand-dark font-semibold'
-                                    : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
-                                }`}
-                                aria-expanded={openSneakerDropdown}
-                                title="Más números disponibles"
-                              >
-                                <span>+ Más ({moreSizes.length})</span>
-                                <svg
-                                  className={`w-3 h-3 transition-transform ${openSneakerDropdown ? 'rotate-180' : ''}`}
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                </svg>
-                              </button>
-
-                              {openSneakerDropdown && (
-                                <div className="absolute right-0 sm:right-auto sm:left-0 top-full mt-1.5 z-40 bg-white border border-brand-dark/15 shadow-xl rounded-xs p-2 min-w-[190px] max-h-56 overflow-y-auto grid grid-cols-3 gap-1.5">
-                                  {moreSizes.map((size) => {
-                                    const isSelected = selectedSizes.some(
-                                      (s) => s.trim().toLowerCase() === size.trim().toLowerCase()
-                                    );
-                                    const displaySize = formatProductSize(size, 'sneakers');
-                                    return (
-                                      <button
-                                        key={`more-shoe-${size}`}
-                                        type="button"
-                                        onClick={() => handleToggleSize(size)}
-                                        aria-pressed={isSelected}
-                                        className={`h-7 px-2 flex items-center justify-center text-xs tracking-tight rounded-xs border transition-colors cursor-pointer tabular-nums ${
-                                          isSelected
-                                            ? 'bg-brand-dark text-white border-brand-dark font-semibold'
-                                            : 'border-brand-dark/15 text-brand-dark/70 hover:border-brand-dark hover:text-brand-dark bg-white'
-                                        }`}
-                                      >
-                                        {displaySize}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <SizeFilterGroup
+                  label="Números:"
+                  sizes={sneakerSizes}
+                  selectedSizes={selectedSizes}
+                  onToggleSize={handleToggleSize}
+                  expanded={showAllSneakerSizes}
+                  onToggleExpanded={() => setShowAllSneakerSizes((prev) => !prev)}
+                  formatLabel={(size) => formatProductSize(size, 'sneakers')}
+                  titlePrefix="Filtrar por número"
+                  minWidthClass="min-w-[34px]"
+                />
               )}
             </div>
           )}
@@ -1084,55 +963,11 @@ export default function CatalogSection() {
       {!isLoading && !errorMessage && products.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3.5 gap-y-7 sm:gap-x-5 sm:gap-y-9 lg:gap-x-6 lg:gap-y-12">
           {products.map((product) => (
-            <article key={product.id} className="group relative flex flex-col">
-              <a
-                href={buildProductDetailHref(product.id)}
-                className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/20 rounded-xs"
-                aria-label={`${product.title}${
-                  product.category ? ' — ' + product.category : ''
-                }, ${product.formattedPrice}`}
-              >
-                {/* Image Canvas (4:5 ratio, clean white backdrop for uniform card appearance) */}
-                <div className="aspect-[4/5] w-full bg-white rounded-xs overflow-hidden relative flex items-center justify-center">
-                  <img
-                    src={getOptimizedImageUrl(product.image, 'card')}
-                    alt={product.title}
-                    loading="lazy"
-                    decoding="async"
-                    className="w-full h-full object-contain object-center transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04] select-none"
-                  />
-                  {product.badge && (
-                    <span className="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 text-[8px] sm:text-[9px] md:text-[10px] font-semibold uppercase tracking-[0.18em] px-1.5 py-0.5 sm:px-2 sm:py-0.5 bg-[#1D110D]/90 text-[#FAFAFA] backdrop-blur-xs pointer-events-none">
-                      {product.badge}
-                    </span>
-                  )}
-                </div>
-
-                {/* Product Meta */}
-                <div className="mt-2.5 sm:mt-3 flex flex-col">
-                  <div className="flex items-center justify-between text-[9px] sm:text-[10px] md:text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-dark/45 truncate">
-                    <span>{product.brandName || product.category || 'The Office BA'}</span>
-                    {product.gender && (
-                      <span className="text-brand-dark/35">{genderLabelMap[product.gender] || product.gender}</span>
-                    )}
-                  </div>
-                  <h3
-                    title={product.title}
-                    className="text-[11px] sm:text-[12px] md:text-[12.5px] font-medium tracking-tight text-brand-dark group-hover:text-brand-dark/70 transition-colors duration-150 mt-0.5 truncate leading-snug"
-                  >
-                    {product.title}
-                  </h3>
-                  <p className="text-xs sm:text-[13px] md:text-sm font-semibold tracking-tight text-brand-dark tabular-nums mt-0.5 flex flex-wrap items-baseline gap-1.5">
-                    {product.formattedPreviousPrice && (
-                      <span className="text-brand-dark/45 line-through font-normal text-[11px] sm:text-xs">
-                        {product.formattedPreviousPrice}
-                      </span>
-                    )}
-                    <span>{product.formattedPrice}</span>
-                  </p>
-                </div>
-              </a>
-            </article>
+            <ProductGridCard
+              key={product.id}
+              product={product}
+              href={buildProductDetailHref(product.id)}
+            />
           ))}
         </div>
       )}
