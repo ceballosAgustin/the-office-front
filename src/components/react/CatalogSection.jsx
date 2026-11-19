@@ -5,6 +5,7 @@ import {
   fetchBrands,
   fetchFilterOptions,
   buildCatalogHref,
+  catalogSortToBackend,
   parseCatalogParams,
   formatProductSize,
   normalizeClothingSizeLabel,
@@ -15,13 +16,37 @@ import {
 import ProductGridCard, { GENDER_LABELS } from './ProductGridCard';
 import CategoryIcon from './icons/CategoryIcon';
 
-const CATALOG_PAGE_SIZE = 50;
+// 24 is divisible by 2, 3 and 4 columns, so the last grid row is always complete
+const CATALOG_PAGE_SIZE = 24;
+
+// Back-navigation restore (product pages are separate documents): sessionStorage, one entry per catalog query
+const RESTORE_KEY_PREFIX = 'the-office:catalog-restore:v1:';
+const MAX_RESTORE_PAGES = 10;
+const RESTORE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+const SORT_OPTIONS = [
+  { value: null, label: 'Más nuevos' },
+  { value: 'precio-asc', label: 'Menor precio' },
+  { value: 'precio-desc', label: 'Mayor precio' },
+];
+const sortLabel = (sort) => (SORT_OPTIONS.find((o) => o.value === sort) || SORT_OPTIONS[0]).label;
+
+/** Comparator matching the backend sort (used when several size queries are merged client-side). */
+function compareProductsBy(sort) {
+  if (sort === 'precio-asc') {
+    return (a, b) => (Number(a.price) || 0) - (Number(b.price) || 0) || Number(b.id) - Number(a.id);
+  }
+  if (sort === 'precio-desc') {
+    return (a, b) => (Number(b.price) || 0) - (Number(a.price) || 0) || Number(b.id) - Number(a.id);
+  }
+  return (a, b) => Number(b.id) - Number(a.id);
+}
 
 /**
  * Appends `incoming` products to `existing`, skipping ids already present.
- * When `sortByIdDesc` is set (multi-size merges) the result is ordered by id desc.
+ * When `sortMerged` is set (multi-size merges) the result is ordered by the chosen catalog sort.
  */
-function mergeUniqueProducts(existing, incoming, sortByIdDesc) {
+function mergeUniqueProducts(existing, incoming, sortMerged, sort = null) {
   const seen = new Set(existing.map((p) => String(p.id)));
   const merged = [...existing];
   for (const p of incoming) {
@@ -31,8 +56,8 @@ function mergeUniqueProducts(existing, incoming, sortByIdDesc) {
       merged.push(p);
     }
   }
-  if (sortByIdDesc) {
-    merged.sort((a, b) => Number(b.id) - Number(a.id));
+  if (sortMerged) {
+    merged.sort(compareProductsBy(sort));
   }
   return merged;
 }
@@ -64,24 +89,25 @@ const GENDER_OPTIONS = [
   { value: 'UNISEX', label: 'Unisex' },
 ];
 
-/** iOS-style segmented control for gender (same toggle behaviour as before, only the look changed). */
-function GenderControl({ selectedGender, onSelect, full = false }) {
+/** iOS-style segmented control (gender, sort). `value` is compared with `option.value` (null = default option). */
+function SegmentedControl({ label, options, value, onChange, full = false }) {
   return (
     <div
       role="radiogroup"
-      aria-label="Género"
-      className={`grid grid-cols-4 rounded-full bg-brand-dark/[0.06] p-1 ${full ? 'w-full' : 'md:inline-grid'}`}
+      aria-label={label}
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      className={`grid rounded-full bg-brand-dark/[0.06] p-1 ${full ? 'w-full' : 'md:inline-grid'}`}
     >
-      {GENDER_OPTIONS.map((item) => {
-        const isActive = item.value === null ? selectedGender === null : selectedGender === item.value;
+      {options.map((item) => {
+        const isActive = value === item.value;
         return (
           <button
-            key={`gender-${item.label}`}
+            key={`seg-${label}-${item.label}`}
             type="button"
             role="radio"
             aria-checked={isActive}
-            onClick={() => onSelect(item.value)}
-            className={`h-11 whitespace-nowrap rounded-full px-3 text-sm transition-colors duration-150 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-dark md:h-9 md:px-4 ${
+            onClick={() => onChange(item.value)}
+            className={`h-11 whitespace-nowrap rounded-full px-2 text-sm transition-colors duration-150 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-dark md:h-9 md:px-4 ${
               isActive
                 ? 'bg-white font-semibold text-brand-dark shadow-[0_1px_3px_rgb(29_17_13/0.14)]'
                 : 'font-medium text-ink-muted hover:text-brand-dark'
@@ -92,6 +118,52 @@ function GenderControl({ selectedGender, onSelect, full = false }) {
         );
       })}
     </div>
+  );
+}
+
+function GenderControl({ selectedGender, onSelect, full = false }) {
+  return (
+    <SegmentedControl
+      label="Género"
+      options={GENDER_OPTIONS}
+      value={selectedGender}
+      onChange={onSelect}
+      full={full}
+    />
+  );
+}
+
+/** md+ sort dropdown ("Ordenar: …"), native select for keyboard / screen reader support. */
+function SortSelect({ value, onChange }) {
+  return (
+    <label className="hidden items-center gap-2 text-sm text-ink-muted md:flex">
+      <span>Ordenar:</span>
+      <span className="relative">
+        <select
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value || null)}
+          className="h-10 cursor-pointer appearance-none rounded-full bg-white pl-4 pr-10 text-sm font-medium text-brand-dark shadow-hairline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-dark"
+        >
+          {SORT_OPTIONS.map((o) => (
+            <option key={o.label} value={o.value ?? ''}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <svg
+          className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </span>
+    </label>
   );
 }
 
@@ -215,6 +287,7 @@ export default function CatalogSection() {
   const [selectedGender, setSelectedGender] = useState(null);
   const [selectedSizes, setSelectedSizes] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSort, setSelectedSort] = useState(null); // null | 'precio-asc' | 'precio-desc'
 
   // Dynamic available sizes calculated server-side
   const [availableSizes, setAvailableSizes] = useState([]);
@@ -258,9 +331,45 @@ export default function CatalogSection() {
   }, [availableSizes]);
 
   const productsReqIdRef = useRef(0);
+
+  // --- Back-navigation restore (see RESTORE_KEY_PREFIX) ---
+  const restoreRef = useRef(null); // stored state picked on mount (consumed by the first loadProducts)
+  const restoringRef = useRef(false); // true until the restore finished (scroll applied)
+  const pendingScrollRef = useRef(null);
+  const pagesLoadedRef = useRef(0); // number of "batches" currently loaded (1 = first page)
+  const readyRef = useRef(false); // only persist once the initial load / restore settled
+  const prevScrollRestorationRef = useRef('auto');
   const filterOptionsReqIdRef = useRef(0);
   const selectedSizesRef = useRef(selectedSizes);
   selectedSizesRef.current = selectedSizes;
+
+  // Writes { pages, scrollY, savedAt } for the current catalog query (no-op until the initial load settled)
+  function persistRestoreState() {
+    if (!readyRef.current || pagesLoadedRef.current < 1) return;
+    try {
+      window.sessionStorage.setItem(
+        RESTORE_KEY_PREFIX + window.location.search,
+        JSON.stringify({
+          pages: pagesLoadedRef.current,
+          scrollY: Math.round(window.scrollY),
+          savedAt: Date.now(),
+        })
+      );
+    } catch {
+      /* storage full / unavailable */
+    }
+  }
+
+  function finishRestore() {
+    if (!restoringRef.current) return;
+    restoringRef.current = false;
+    try {
+      window.history.scrollRestoration = prevScrollRestorationRef.current || 'auto';
+    } catch {
+      /* ignore */
+    }
+    readyRef.current = true;
+  }
 
   // Pagination context of the current product list. Pagination strategy:
   // - 0 or 1 selected size: a single query (variantSize when 1 size), paged with page/size.
@@ -316,10 +425,15 @@ export default function CatalogSection() {
     brandSlug = selectedBrand,
     genderVal = selectedGender,
     sizesVal = selectedSizes,
-    searchVal = searchQuery
+    searchVal = searchQuery,
+    sortVal = selectedSort
   ) => {
     productsReqIdRef.current += 1;
     const reqId = productsReqIdRef.current;
+    pagesLoadedRef.current = 0;
+    // The stored restore state is only valid for the very first load of a back/forward navigation
+    const restore = restoreRef.current;
+    restoreRef.current = null;
 
     setIsLoading(true);
     setIsLoadingMore(false);
@@ -336,7 +450,9 @@ export default function CatalogSection() {
           brand: brandSlug || undefined,
           gender: genderVal || undefined,
           search: searchVal || undefined,
+          sort: catalogSortToBackend(sortVal),
         },
+        sort: sortVal,
         queries: (isMulti ? sizeList : [sizeList[0]]).map((variantSize) => ({
           variantSize: variantSize || undefined,
           nextPage: 0,
@@ -353,16 +469,36 @@ export default function CatalogSection() {
 
       if (reqId !== productsReqIdRef.current) return;
 
-      paginationRef.current = { ...currentPagination, queries: firstBatch.nextQueries };
+      // Back navigation: replay the "Ver más" batches the visitor had loaded (sequential, capped)
+      let allProducts = firstBatch.products;
+      let queries = firstBatch.nextQueries;
+      let total = firstBatch.totalElements;
+      let pagesLoaded = 1;
+      if (restore && restore.pages > 1) {
+        const target = Math.min(restore.pages, MAX_RESTORE_PAGES);
+        while (pagesLoaded < target && queries.some((q) => q.hasNext)) {
+          const more = await fetchNextBatch({ ...currentPagination, queries });
+          if (reqId !== productsReqIdRef.current) return;
+          allProducts = allProducts.concat(more.products);
+          queries = more.nextQueries;
+          total = more.totalElements;
+          pagesLoaded += 1;
+        }
+      }
+
+      paginationRef.current = { ...currentPagination, queries };
       const finalProducts = mergeUniqueProducts(
         [],
-        filterBySizes(firstBatch.products, sizesVal),
-        isMulti
+        filterBySizes(allProducts, sizesVal),
+        isMulti,
+        sortVal
       );
 
+      pagesLoadedRef.current = pagesLoaded;
+      pendingScrollRef.current = restore ? restore.scrollY : null;
       setProducts(finalProducts);
-      setTotalElements(firstBatch.totalElements);
-      setHasMore(firstBatch.nextQueries.some((q) => q.hasNext));
+      setTotalElements(total);
+      setHasMore(queries.some((q) => q.hasNext));
       if (fetchedCategories && fetchedCategories.length > 0) {
         setCategories(fetchedCategories);
       }
@@ -371,6 +507,7 @@ export default function CatalogSection() {
       }
     } catch (err) {
       if (reqId !== productsReqIdRef.current) return;
+      pendingScrollRef.current = null;
       setHasMore(false);
       setErrorMessage(
         err.message || 'No se pudo conectar con el catálogo de productos.'
@@ -397,12 +534,19 @@ export default function CatalogSection() {
       if (reqId !== productsReqIdRef.current) return;
 
       paginationRef.current = { ...pagination, queries: batch.nextQueries };
+      pagesLoadedRef.current += 1;
       const sizesNow = selectedSizesRef.current;
       setProducts((prev) =>
-        mergeUniqueProducts(prev, filterBySizes(batch.products, sizesNow), pagination.multi)
+        mergeUniqueProducts(
+          prev,
+          filterBySizes(batch.products, sizesNow),
+          pagination.multi,
+          pagination.sort
+        )
       );
       setTotalElements(batch.totalElements);
       setHasMore(batch.nextQueries.some((q) => q.hasNext));
+      persistRestoreState();
     } catch (err) {
       if (reqId !== productsReqIdRef.current) return;
       setLoadMoreError(
@@ -477,11 +621,37 @@ export default function CatalogSection() {
       prev.length === sizes.length && prev.every((s, i) => s === sizes[i]) ? prev : sizes
     );
     setSearchQuery(parsed.search);
+    setSelectedSort(parsed.sort);
     setUrlSynced(true);
   };
 
   // On mount and URL change listeners (popstate & catalog event)
   useEffect(() => {
+    // Back/forward navigation to a catalog the visitor had expanded + scrolled: restore it.
+    try {
+      const nav = performance.getEntriesByType('navigation')[0];
+      if (nav && nav.type === 'back_forward') {
+        const raw = window.sessionStorage.getItem(RESTORE_KEY_PREFIX + window.location.search);
+        const stored = raw ? JSON.parse(raw) : null;
+        if (
+          stored &&
+          Number.isFinite(stored.pages) &&
+          stored.pages >= 1 &&
+          Number.isFinite(stored.scrollY) &&
+          (stored.pages > 1 || stored.scrollY > 0) &&
+          Date.now() - (stored.savedAt || 0) < RESTORE_MAX_AGE_MS
+        ) {
+          restoreRef.current = stored;
+          restoringRef.current = true;
+          // Avoid the browser jumping to its own idea of the scroll position before we restore ours
+          prevScrollRestorationRef.current = window.history.scrollRestoration || 'auto';
+          window.history.scrollRestoration = 'manual';
+        }
+      }
+    } catch {
+      /* sessionStorage / Navigation Timing unavailable: just don't restore */
+    }
+
     syncFromUrl();
     window.addEventListener('popstate', syncFromUrl);
     window.addEventListener('the-office:catalog-url-change', syncFromUrl);
@@ -511,7 +681,8 @@ export default function CatalogSection() {
       selectedBrand,
       selectedGender,
       selectedSizes,
-      searchQuery
+      searchQuery,
+      selectedSort
     );
   }, [
     urlSynced,
@@ -521,6 +692,7 @@ export default function CatalogSection() {
     selectedGender,
     selectedSizes,
     searchQuery,
+    selectedSort,
   ]);
 
   // Load available size options whenever criteria other than size change
@@ -566,6 +738,7 @@ export default function CatalogSection() {
         : selectedSizes;
     const targetSearch =
       nextFilters.search !== undefined ? nextFilters.search : searchQuery;
+    const targetSort = nextFilters.sort !== undefined ? nextFilters.sort : selectedSort;
 
     const nextHref = buildCatalogHref({
       category: targetCategory,
@@ -574,6 +747,7 @@ export default function CatalogSection() {
       gender: targetGender,
       size: targetSizes.length > 0 ? targetSizes.join(',') : null,
       search: targetSearch,
+      sort: targetSort,
     });
 
     const currentHref = `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -748,6 +922,18 @@ export default function CatalogSection() {
     updateCatalogUrl({ gender: null, sizes: [] }, true);
   };
 
+  // Changing the sort restarts from page 1 (the URL change reloads the list) and drops any stored restore state
+  const handleSortSelect = (nextSort) => {
+    if (nextSort === selectedSort) return;
+    setSelectedSort(nextSort);
+    updateCatalogUrl({ sort: nextSort }, true);
+    try {
+      window.sessionStorage.removeItem(RESTORE_KEY_PREFIX + window.location.search);
+    } catch {
+      /* ignore */
+    }
+  };
+
   // Bottom sheet a11y: body scroll lock, focus trap, Escape to close, restore focus, auto-close on md+
   useEffect(() => {
     if (!isFilterSheetOpen) return undefined;
@@ -803,22 +989,93 @@ export default function CatalogSection() {
     };
   }, [isFilterSheetOpen]);
 
+  // After the list (re)renders: apply the restored scroll position, or mark the page ready to persist.
+  useEffect(() => {
+    if (isLoading) return;
+    if (pendingScrollRef.current != null) {
+      const target = pendingScrollRef.current;
+      pendingScrollRef.current = null;
+      let interacted = false;
+      const markInteracted = () => {
+        interacted = true;
+      };
+      ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach((evt) =>
+        window.addEventListener(evt, markInteracted, { passive: true, once: true })
+      );
+      const apply = () => {
+        if (interacted) return;
+        if (Math.abs(window.scrollY - target) > 4) window.scrollTo({ top: target, behavior: 'auto' });
+      };
+      // Images have a fixed 4:5 box, but the sections above load asynchronously: re-apply a couple of times
+      requestAnimationFrame(() => requestAnimationFrame(apply));
+      window.setTimeout(apply, 350);
+      window.setTimeout(apply, 900);
+      window.setTimeout(() => {
+        apply();
+        finishRestore();
+        persistRestoreState();
+      }, 1300);
+      return;
+    }
+    if (restoringRef.current) {
+      finishRestore(); // restore requested but the load failed / returned nothing
+      return;
+    }
+    readyRef.current = true;
+    persistRestoreState();
+  }, [isLoading, products]);
+
+  // Persist the scroll position (throttled) and on leaving the page
+  useEffect(() => {
+    let timer = null;
+    let last = 0;
+    const onScroll = () => {
+      const now = Date.now();
+      if (now - last > 250) {
+        last = now;
+        persistRestoreState();
+      } else {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          last = Date.now();
+          persistRestoreState();
+        }, 250);
+      }
+    };
+    const onHide = () => persistRestoreState();
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') persistRestoreState();
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('pagehide', onHide);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('pagehide', onHide);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
   return (
     <section
       id="catalogo"
       className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-10 sm:pt-14 pb-8 sm:pb-12 scroll-mt-24"
       aria-label="Catálogo de productos"
     >
-      {/* 1. Header: title + product count */}
-      <div className="mb-4 sm:mb-6">
-        <h2 className="text-[1.75rem] font-semibold leading-tight tracking-[-0.025em] text-brand-dark sm:text-[2rem]">
-          Todo el catálogo
-        </h2>
-        <p className="mt-1 text-[15px] tabular-nums text-ink-muted" aria-live="polite">
-          {isLoading
-            ? 'Cargando productos…'
-            : `${totalCount} ${totalCount === 1 ? 'producto' : 'productos'}`}
-        </p>
+      {/* 1. Header: title + product count (+ md+ sort) */}
+      <div className="mb-4 flex flex-col gap-3 sm:mb-6 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-[1.75rem] font-semibold leading-tight tracking-[-0.025em] text-brand-dark sm:text-[2rem]">
+            Todo el catálogo
+          </h2>
+          <p className="mt-1 text-[15px] tabular-nums text-ink-muted" aria-live="polite">
+            {isLoading
+              ? 'Cargando productos…'
+              : `${totalCount} ${totalCount === 1 ? 'producto' : 'productos'}`}
+          </p>
+        </div>
+        <SortSelect value={selectedSort} onChange={handleSortSelect} />
       </div>
 
       {/* 2. Filter card: category pills + (md+) inline gender / sizes, (mobile) "Filtros" button */}
@@ -876,6 +1133,15 @@ export default function CatalogSection() {
                 {sheetFilterCount}
               </span>
             )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsFilterSheetOpen(true)}
+            className="ml-1 inline-flex h-11 min-w-0 cursor-pointer items-center rounded-full px-3 text-sm text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-dark"
+          >
+            <span className="truncate">
+              Ordenar: <span className="font-semibold text-brand-dark">{sortLabel(selectedSort)}</span>
+            </span>
           </button>
         </div>
 
@@ -1006,6 +1272,16 @@ export default function CatalogSection() {
             </div>
 
             <div className="flex-1 space-y-6 overflow-y-auto px-5 pb-5 pt-2">
+              <div className="flex flex-col gap-3">
+                <span className="text-[13px] font-semibold text-ink-muted">Ordenar por</span>
+                <SegmentedControl
+                  label="Ordenar por"
+                  options={SORT_OPTIONS}
+                  value={selectedSort}
+                  onChange={handleSortSelect}
+                  full
+                />
+              </div>
               <div className="flex flex-col gap-3">
                 <span className="text-[13px] font-semibold text-ink-muted">Género</span>
                 <GenderControl selectedGender={selectedGender} onSelect={handleGenderSelect} full />
@@ -1170,6 +1446,30 @@ export default function CatalogSection() {
             <p className="text-xs text-red-800" role="alert">
               {loadMoreError}
             </p>
+          )}
+          {hasMore && (
+            <div className="w-full max-w-xs text-center">
+              <p className="text-[13px] tabular-nums text-ink-muted">
+                {totalElements != null
+                  ? `Viendo ${products.length} de ${totalElements} productos`
+                  : `Viendo ${products.length} productos`}
+              </p>
+              {totalElements != null && totalElements > 0 && (
+                <div
+                  className="mt-2 h-1 w-full overflow-hidden rounded-full bg-sunken"
+                  role="progressbar"
+                  aria-label="Productos cargados"
+                  aria-valuemin={0}
+                  aria-valuemax={totalElements}
+                  aria-valuenow={Math.min(products.length, totalElements)}
+                >
+                  <div
+                    className="h-full rounded-full bg-brand-dark transition-[width] duration-300 ease-ios"
+                    style={{ width: `${Math.min(100, (products.length / totalElements) * 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
           )}
           {hasMore && (
             <button

@@ -209,6 +209,7 @@ export default function NavbarSearch() {
         brand: currentFilters.brand,
         gender: currentFilters.gender,
         size: currentFilters.size,
+        sort: currentFilters.sort,
         search: trimmedQuery || null,
       });
     }
@@ -233,6 +234,7 @@ export default function NavbarSearch() {
         brand: currentFilters.brand,
         gender: currentFilters.gender,
         size: currentFilters.size,
+        sort: currentFilters.sort,
         search: trimmedQuery,
       });
 

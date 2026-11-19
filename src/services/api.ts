@@ -229,6 +229,16 @@ export interface FilterOptionsResponse {
   availableSizes: string[];
 }
 
+/** Public catalog sort (URL param `orden`). null = "Más nuevos" (default, id desc). */
+export type CatalogSort = 'precio-asc' | 'precio-desc' | null;
+
+/** Maps the public catalog sort to the backend Spring `sort` value. */
+export function catalogSortToBackend(sort?: CatalogSort | string | null): string {
+  if (sort === 'precio-asc') return 'price,asc';
+  if (sort === 'precio-desc') return 'price,desc';
+  return 'id,desc';
+}
+
 export interface CatalogFilterParams {
   category?: string | null;
   categoryId?: number | string | null;
@@ -236,6 +246,7 @@ export interface CatalogFilterParams {
   gender?: ProductGender | string | null;
   size?: string | null;
   search?: string | null;
+  sort?: CatalogSort | string | null;
 }
 
 export interface ParsedCatalogParams {
@@ -245,6 +256,7 @@ export interface ParsedCatalogParams {
   gender: ProductGender | null;
   size: string | null;
   search: string;
+  sort: CatalogSort;
 }
 
 export interface Product {
@@ -1899,6 +1911,11 @@ export function buildCatalogHref(filters: CatalogFilterParams): string {
     params.set('search', filters.search.trim());
   }
 
+  // Sort: only non-default values are written (absent = "Más nuevos")
+  if (filters.sort === 'precio-asc' || filters.sort === 'precio-desc') {
+    params.set('orden', filters.sort);
+  }
+
   const query = params.toString();
   return query ? `/?${query}#catalogo` : '/#catalogo';
 }
@@ -1927,6 +1944,7 @@ export function parseCatalogParams(searchOrUrl?: string): ParsedCatalogParams {
       gender: null,
       size: null,
       search: '',
+      sort: null,
     };
   }
 
@@ -1985,6 +2003,10 @@ export function parseCatalogParams(searchOrUrl?: string): ParsedCatalogParams {
     gender,
     size,
     search,
+    sort: (() => {
+      const rawSort = searchParams.get('orden')?.trim().toLowerCase();
+      return rawSort === 'precio-asc' || rawSort === 'precio-desc' ? rawSort : null;
+    })(),
   };
 }
 

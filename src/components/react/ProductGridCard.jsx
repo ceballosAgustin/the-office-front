@@ -11,7 +11,6 @@ export const GENDER_LABELS = {
 };
 
 const MAX_SIZES_SHOWN = 4;
-const LOW_STOCK_THRESHOLD = 3;
 
 /**
  * Product card shared by the catalog grid and the "Recién ingresados" section.
@@ -25,9 +24,6 @@ export default function ProductGridCard({ product, href, imageLoading = 'lazy', 
   );
   const shownSizes = uniqueSizes.slice(0, MAX_SIZES_SHOWN).map((s) => formatProductSize(s, product));
   const extraSizes = uniqueSizes.length - shownSizes.length;
-
-  const totalStock = (product.variants || []).reduce((acc, v) => acc + (Number(v.stock) || 0), 0);
-  const isLowStock = totalStock > 0 && totalStock <= LOW_STOCK_THRESHOLD;
 
   const discountPct =
     product.previousPrice && product.price > 0 && product.previousPrice > product.price
@@ -69,11 +65,6 @@ export default function ProductGridCard({ product, href, imageLoading = 'lazy', 
               </span>
             )}
           </div>
-          {isLowStock && (
-            <span className="pointer-events-none absolute bottom-2.5 left-2.5 rounded-full bg-white px-2.5 py-1 text-xs font-semibold leading-none text-brand-dark shadow-hairline">
-              Últimas unidades
-            </span>
-          )}
         </div>
 
         {/* Product Meta */}
