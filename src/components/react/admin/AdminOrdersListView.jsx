@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AdminShell from './AdminShell';
 import OrderStatusBadge from './OrderStatusBadge';
 import AdminOrderDetailView from './AdminOrderDetailView';
@@ -61,8 +61,13 @@ export default function AdminOrdersListView() {
     setInitializedFilter(true);
   }, []);
 
+  // Request id guard: ignore responses from superseded requests
+  const loadReqIdRef = useRef(0);
+
   const loadOrders = useCallback(
     async (targetStatus, targetPage) => {
+      loadReqIdRef.current += 1;
+      const reqId = loadReqIdRef.current;
       setIsLoading(true);
       setErrorMessage(null);
 
@@ -73,6 +78,7 @@ export default function AdminOrdersListView() {
           size: pageSize,
           sort: 'createdAt,desc',
         });
+        if (reqId !== loadReqIdRef.current) return;
 
         setPageData({
           content: Array.isArray(res?.content) ? res.content : [],
@@ -81,19 +87,18 @@ export default function AdminOrdersListView() {
           number: Number(res?.number) || 0,
         });
       } catch (err) {
+        if (reqId !== loadReqIdRef.current) return;
         if (err?.status === 401) {
           window.location.replace('/admin/login?reason=expired');
-          return;
-        }
-        if (err?.status === 403) {
-          window.location.replace('/admin/login?reason=forbidden');
           return;
         }
         setErrorMessage(
           err?.message || 'No se pudo cargar el listado de pedidos.'
         );
       } finally {
-        setIsLoading(false);
+        if (reqId === loadReqIdRef.current) {
+          setIsLoading(false);
+        }
       }
     },
     [pageSize]

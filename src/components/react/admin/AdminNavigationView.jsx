@@ -156,10 +156,6 @@ export default function AdminNavigationView() {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       setLoadError(
         err?.message || 'No se pudo cargar la configuración de navegación.'
       );

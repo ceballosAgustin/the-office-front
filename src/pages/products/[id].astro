@@ -1,21 +1,41 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import ProductDetailView from "../../components/react/ProductDetailView.jsx";
-import { getAllProductPaths } from "../../services/api";
+import { getAllProductsForStatic, getOptimizedImageUrl } from "../../services/api";
 
 export async function getStaticPaths() {
-  const dynamicIds = await getAllProductPaths();
-  return dynamicIds.map((id) => ({
-    params: { id: String(id) },
+  const products = await getAllProductsForStatic();
+  return products.map((product) => ({
+    params: { id: String(product.id) },
+    props: {
+      productTitle: product.title || "",
+      productDescription: product.description || "",
+      productImage: product.image || "",
+    },
   }));
 }
 
 const { id } = Astro.params;
+const { productTitle, productDescription, productImage } = Astro.props;
+
+const DEFAULT_DESCRIPTION =
+  "Prenda exclusiva de la colección The Office BA. Calce contemporáneo, confección estructurada y despacho seguro.";
+const cleanDescription = (productDescription || "").replace(/\s+/g, " ").trim();
+const metaDescription = cleanDescription
+  ? cleanDescription.length > 160
+    ? `${cleanDescription.slice(0, 157).trimEnd()}...`
+    : cleanDescription
+  : DEFAULT_DESCRIPTION;
+const metaTitle = productTitle
+  ? `${productTitle} — The Office BA`
+  : `Detalle de Producto #${id} — The Office BA`;
+const metaImage = productImage ? getOptimizedImageUrl(productImage, "detail") : undefined;
 ---
 
 <Layout
-  title={`Detalle de Producto #${id} — The Office BA`}
-  description="Prenda exclusiva de la colección The Office BA. Calce contemporáneo, confección estructurada y despacho seguro."
+  title={metaTitle}
+  description={metaDescription}
+  image={metaImage}
   canonicalPath={`/products/${id}`}
 >
   <ProductDetailView client:load productId={id} />

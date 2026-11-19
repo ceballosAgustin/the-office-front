@@ -10,6 +10,9 @@ export interface CartItem {
   quantity: number;
   unitPrice: number;
   image: string;
+  /** Category name/slug, used only to format the displayed size (e.g. sneakers "7us"). */
+  category?: string;
+  categorySlug?: string;
   maxStock?: number;
   isAvailable?: boolean;
   unavailableReason?: 'out_of_stock' | 'inactive';
@@ -24,6 +27,20 @@ export interface CartAvailabilityReport {
 
 const CART_STORAGE_KEY = 'the_office_ba_cart_v1';
 const CART_SYNC_EVENT = 'the-office-ba:cart-updated';
+
+/** Límites del backend: máx. 99 unidades por variante y 50 productos distintos por pedido/consulta. */
+export const MAX_CART_QTY_PER_ITEM = 99;
+export const MAX_CART_DISTINCT_ITEMS = 50;
+
+/**
+ * Máximo de unidades que se pueden pedir de un item: min(stock conocido, 99).
+ */
+export function getCartItemQuantityLimit(maxStock?: number | null): number {
+  if (maxStock !== undefined && maxStock !== null && Number.isFinite(Number(maxStock))) {
+    return Math.max(0, Math.min(Math.floor(Number(maxStock)), MAX_CART_QTY_PER_ITEM));
+  }
+  return MAX_CART_QTY_PER_ITEM;
+}
 
 /**
  * Shared nanostore atom holding the current cart items in memory.
@@ -73,9 +90,12 @@ function sanitizeCartItems(raw: unknown): CartItem[] {
       variantId,
       title: String((entry as any).title || 'Producto'),
       size: String((entry as any).size || 'Único'),
-      quantity,
+      quantity: Math.min(quantity, MAX_CART_QTY_PER_ITEM),
       unitPrice: Number.isFinite(unitPrice) && unitPrice >= 0 ? unitPrice : 0,
       image: String((entry as any).image || ''),
+      category: typeof (entry as any).category === 'string' ? (entry as any).category : undefined,
+      categorySlug:
+        typeof (entry as any).categorySlug === 'string' ? (entry as any).categorySlug : undefined,
       maxStock: parsedMaxStock,
       isAvailable,
       unavailableReason,
@@ -83,7 +103,7 @@ function sanitizeCartItems(raw: unknown): CartItem[] {
 
     const existing = merged.get(variantId);
     if (existing) {
-      existing.quantity += item.quantity;
+      existing.quantity = Math.min(existing.quantity + item.quantity, MAX_CART_QTY_PER_ITEM);
       if (item.maxStock !== undefined) {
         existing.maxStock = item.maxStock;
       }
@@ -217,6 +237,22 @@ export function addItemToCart(
     }
   }
 
+  const currentQtyForCap = existingItem ? existingItem.quantity : 0;
+  if (currentQtyForCap + addQty > MAX_CART_QTY_PER_ITEM) {
+    const remainingCap = Math.max(0, MAX_CART_QTY_PER_ITEM - currentQtyForCap);
+    throw new Error(
+      remainingCap > 0
+        ? `Podés pedir hasta ${MAX_CART_QTY_PER_ITEM} unidades por talle. Ya tenés ${currentQtyForCap} en tu carrito; podés agregar hasta ${remainingCap} más.`
+        : `Alcanzaste el máximo de ${MAX_CART_QTY_PER_ITEM} unidades por talle en tu carrito.`
+    );
+  }
+
+  if (!existingItem && current.length >= MAX_CART_DISTINCT_ITEMS) {
+    throw new Error(
+      `Tu carrito alcanzó el máximo de ${MAX_CART_DISTINCT_ITEMS} productos distintos. Quitá alguno para poder agregar otro.`
+    );
+  }
+
   let updated: CartItem[];
   if (existingIndex >= 0) {
     updated = current.map((item, idx) =>
@@ -229,6 +265,8 @@ export function addItemToCart(
           unitPrice:
             Number(newItem.unitPrice) >= 0 ? Number(newItem.unitPrice) : item.unitPrice,
           image: newItem.image || item.image,
+          category: newItem.category ?? item.category,
+          categorySlug: newItem.categorySlug ?? item.categorySlug,
           maxStock: availableStock,
           isAvailable: true,
           unavailableReason: undefined,
@@ -247,6 +285,8 @@ export function addItemToCart(
         quantity: addQty,
         unitPrice: Number(newItem.unitPrice) || 0,
         image: newItem.image,
+        category: newItem.category,
+        categorySlug: newItem.categorySlug,
         maxStock: availableStock,
         isAvailable: true,
         unavailableReason: undefined,
@@ -265,12 +305,13 @@ export function addItemToCart(
 export function updateCartItemQuantity(variantId: number, quantity: number): CartItem[] {
   initCartStore();
   const targetId = Number(variantId);
-  const requestedQty = Math.floor(Number(quantity));
   const current = readCartFromStorage();
+  const rawRequestedQty = Math.floor(Number(quantity));
 
-  if (!Number.isFinite(requestedQty) || requestedQty < 1) {
+  if (!Number.isFinite(rawRequestedQty) || rawRequestedQty < 1) {
     return current;
   }
+  const requestedQty = Math.min(rawRequestedQty, MAX_CART_QTY_PER_ITEM);
 
   const targetItem = current.find((item) => item.variantId === targetId);
   if (!targetItem) {
@@ -311,6 +352,9 @@ export function incrementCartItem(variantId: number): CartItem[] {
   if (!targetItem) return current;
   if (targetItem.isAvailable === false) return current;
   if (targetItem.maxStock !== undefined && targetItem.quantity + 1 > targetItem.maxStock) {
+    return current;
+  }
+  if (targetItem.quantity + 1 > MAX_CART_QTY_PER_ITEM) {
     return current;
   }
 
@@ -411,7 +455,18 @@ export function evaluateCartValidity(items: CartItem[]): CartAvailabilityReport 
  * using existing GET /api/products/{id} (and GET /api/products fallback).
  * Never silently alters item.quantity if stock dropped below the cart quantity.
  */
-export async function refreshCartAvailability(): Promise<CartAvailabilityReport> {
+let inflightRefresh: Promise<CartAvailabilityReport> | null = null;
+
+export function refreshCartAvailability(): Promise<CartAvailabilityReport> {
+  // Coalesce concurrent refreshes into the one already running.
+  if (inflightRefresh) return inflightRefresh;
+  inflightRefresh = doRefreshCartAvailability().finally(() => {
+    inflightRefresh = null;
+  });
+  return inflightRefresh;
+}
+
+async function doRefreshCartAvailability(): Promise<CartAvailabilityReport> {
   initCartStore();
   const current = readCartFromStorage();
   if (current.length === 0) {
@@ -490,6 +545,8 @@ export async function refreshCartAvailability(): Promise<CartAvailabilityReport>
         title: matchedProduct.title || item.title,
         unitPrice: matchedProduct.price ?? item.unitPrice,
         image: matchedProduct.image || item.image,
+        category: matchedProduct.category || item.category,
+        categorySlug: matchedProduct.categorySlug || item.categorySlug,
         maxStock: 0,
         isAvailable: false,
         unavailableReason: 'inactive' as const,
@@ -510,6 +567,8 @@ export async function refreshCartAvailability(): Promise<CartAvailabilityReport>
         size: matchedVariant.size || item.size,
         unitPrice: resolvedUnitPrice,
         image: matchedProduct.image || item.image,
+        category: matchedProduct.category || item.category,
+        categorySlug: matchedProduct.categorySlug || item.categorySlug,
         maxStock: 0,
         isAvailable: false,
         unavailableReason: 'out_of_stock' as const,
@@ -524,13 +583,38 @@ export async function refreshCartAvailability(): Promise<CartAvailabilityReport>
       size: matchedVariant.size || item.size,
       unitPrice: resolvedUnitPrice,
       image: matchedProduct.image || item.image,
+      category: matchedProduct.category || item.category,
+      categorySlug: matchedProduct.categorySlug || item.categorySlug,
       maxStock: liveStock,
       isAvailable: true,
       unavailableReason: undefined,
     };
   });
 
-  const committed = commitCart(updated);
+  // The awaits above may have taken a while: re-read the cart and merge only the
+  // availability/product fields by variantId, so concurrent edits (removed items,
+  // changed quantities, newly added items) are preserved.
+  const refreshedById = new Map<number, CartItem>(updated.map((item) => [item.variantId, item]));
+  const latest = readCartFromStorage();
+  const merged = latest.map((item) => {
+    const fresh = refreshedById.get(item.variantId);
+    if (!fresh) return item;
+    return {
+      ...item,
+      productId: fresh.productId,
+      title: fresh.title,
+      size: fresh.size,
+      unitPrice: fresh.unitPrice,
+      image: fresh.image,
+      category: fresh.category,
+      categorySlug: fresh.categorySlug,
+      maxStock: fresh.maxStock,
+      isAvailable: fresh.isAvailable,
+      unavailableReason: fresh.unavailableReason,
+    };
+  });
+
+  const committed = commitCart(merged);
   return evaluateCartValidity(committed);
 }
 

@@ -130,6 +130,16 @@ export default function NavbarNavigation() {
     }
   }, [isMobileOpen]);
 
+  // Lock body scroll while the mobile drawer is open
+  useEffect(() => {
+    if (!isMobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileOpen]);
+
   // Close menus on Escape or click outside
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -416,6 +426,7 @@ export default function NavbarNavigation() {
         <div
           id="navbar-mobile-drawer"
           role="dialog"
+          aria-modal="true"
           aria-label="Menú de navegación móvil"
           className="lg:hidden fixed left-0 right-0 top-14 md:top-16 bottom-0 z-30 bg-[#FAFAFA]/98 backdrop-blur-md overflow-y-auto px-5 py-6 border-t border-brand-dark/[0.08] animate-fadeIn"
         >

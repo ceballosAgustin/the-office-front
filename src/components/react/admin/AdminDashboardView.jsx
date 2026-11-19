@@ -41,10 +41,6 @@ export default function AdminDashboardView() {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       setErrorMessage(
         err?.message || 'No se pudieron obtener los indicadores del panel.'
       );

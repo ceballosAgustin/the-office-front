@@ -44,10 +44,6 @@ export default function AdminCategoriesView() {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       setLoadError(
         err?.message || 'No se pudo cargar el listado de categorías.'
       );
@@ -211,10 +207,6 @@ export default function AdminCategoriesView() {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       if (err?.fieldErrors && typeof err.fieldErrors === 'object') {
         setFormFieldErrors(err.fieldErrors);
       }
@@ -253,10 +245,6 @@ export default function AdminCategoriesView() {
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
-        return;
-      }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
         return;
       }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useCart } from '../../store/cartStore';
+import { useCart, getCartItemQuantityLimit } from '../../store/cartStore';
 import { formatProductSize, sortProductVariants } from '../../services/api';
 
 const SINGLE_SIZE_LABELS = new Set([
@@ -58,20 +58,22 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
     ? Math.max(0, Math.floor(Number(selectedVariant.stock ?? 0)))
     : 0;
   const isSelectedOutOfStock = Boolean(selectedVariant && selectedStock <= 0);
+  // Quantity selector limit: min(stock, 99 per variant allowed by the backend)
+  const selectedLimit = getCartItemQuantityLimit(selectedStock);
 
   const existingInCart = selectedVariant
     ? items.find((i) => i.variantId === selectedVariant.id)
     : null;
   const currentQtyInCart = existingInCart ? existingInCart.quantity : 0;
 
-  // Ensure quantity always stays within [1, selectedStock] if product/variant stock updates
+  // Ensure quantity always stays within [1, selectedLimit] if product/variant stock updates
   useEffect(() => {
     if (!selectedVariant || selectedStock <= 0) {
       setQuantity(1);
       return;
     }
-    setQuantity((prev) => Math.max(1, Math.min(prev, selectedStock)));
-  }, [selectedVariant?.id, selectedStock]);
+    setQuantity((prev) => Math.max(1, Math.min(prev, selectedLimit)));
+  }, [selectedVariant?.id, selectedLimit]);
 
   const handleVariantSelect = (variant) => {
     const newStock = Math.max(0, Math.floor(Number(variant.stock ?? 0)));
@@ -87,7 +89,7 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
     }
 
     // Clamp quantity to remain valid for the newly selected variant
-    setQuantity((prev) => Math.max(1, Math.min(prev, newStock)));
+    setQuantity((prev) => Math.max(1, Math.min(prev, getCartItemQuantityLimit(newStock))));
     setValidationError(null);
   };
 
@@ -98,8 +100,8 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
   };
 
   const handleIncrementQuantity = () => {
-    if (!selectedVariant || selectedStock <= 0 || quantity >= selectedStock) return;
-    setQuantity((prev) => Math.min(selectedStock, prev + 1));
+    if (!selectedVariant || selectedStock <= 0 || quantity >= selectedLimit) return;
+    setQuantity((prev) => Math.min(selectedLimit, prev + 1));
     setValidationError(null);
   };
 
@@ -175,6 +177,8 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
           size: selectedVariant.size,
           unitPrice: effectiveUnitPrice,
           image: product?.image || '',
+          category: product?.category || undefined,
+          categorySlug: product?.categorySlug || undefined,
           maxStock: selectedStock,
         },
         safeQty
@@ -189,7 +193,7 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
       });
 
       // Adjust selector quantity to remaining available or 1
-      const nextRemaining = Math.max(1, selectedStock - accumulatedQty);
+      const nextRemaining = Math.max(1, selectedLimit - accumulatedQty);
       setQuantity((prev) => Math.min(prev, nextRemaining));
     } catch (err) {
       setValidationError(
@@ -203,7 +207,7 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
     selectedVariant && selectedStock > 0 && quantity > 1
   );
   const canIncrease = Boolean(
-    selectedVariant && selectedStock > 0 && quantity < selectedStock
+    selectedVariant && selectedStock > 0 && quantity < selectedLimit
   );
   const isAddDisabled =
     !hasVariants || !hasAvailableStock || isSelectedOutOfStock;
@@ -367,9 +371,11 @@ export default function ProductPurchaseSection({ product, onVariantChange }) {
             </div>
 
             <div className="text-right text-[11px] text-brand-dark/55 leading-tight">
-              {selectedVariant && !isSelectedOutOfStock && quantity >= selectedStock ? (
+              {selectedVariant && !isSelectedOutOfStock && quantity >= selectedLimit ? (
                 <span className="font-medium text-brand-dark/80">
-                  Máximo disponible ({selectedStock} u.)
+                  {selectedLimit < selectedStock
+                    ? `Máximo por pedido (${selectedLimit} u.)`
+                    : `Máximo disponible (${selectedStock} u.)`}
                 </span>
               ) : selectedVariant && isSelectedOutOfStock ? (
                 <span className="font-semibold text-red-700 uppercase tracking-wider">

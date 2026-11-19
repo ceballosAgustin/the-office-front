@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  fetchProducts,
+  fetchProductsPage,
   fetchCategories,
   fetchBrands,
   fetchFilterOptions,
@@ -13,32 +13,49 @@ import {
   sortProductSizes,
 } from '../../services/api';
 
+const CATALOG_PAGE_SIZE = 50;
+
+/**
+ * Appends `incoming` products to `existing`, skipping ids already present.
+ * When `sortByIdDesc` is set (multi-size merges) the result is ordered by id desc.
+ */
+function mergeUniqueProducts(existing, incoming, sortByIdDesc) {
+  const seen = new Set(existing.map((p) => String(p.id)));
+  const merged = [...existing];
+  for (const p of incoming) {
+    const key = String(p.id);
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(p);
+    }
+  }
+  if (sortByIdDesc) {
+    merged.sort((a, b) => Number(b.id) - Number(a.id));
+  }
+  return merged;
+}
+
 export default function CatalogSection() {
   const [products, setProducts] = useState([]);
+  const [totalElements, setTotalElements] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(null);
+  // Becomes true once filters have been read from the URL (after hydration), so we don't
+  // fetch first with empty defaults and then again with the real filters.
+  const [urlSynced, setUrlSynced] = useState(false);
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
 
-  // Active filter state
-  const [selectedCategory, setSelectedCategory] = useState(
-    () => parseCatalogParams().category
-  );
-  const [selectedCategoryId, setSelectedCategoryId] = useState(
-    () => parseCatalogParams().categoryId
-  );
-  const [selectedBrand, setSelectedBrand] = useState(
-    () => parseCatalogParams().brand
-  );
-  const [selectedGender, setSelectedGender] = useState(
-    () => parseCatalogParams().gender
-  );
-  const [selectedSizes, setSelectedSizes] = useState(() => {
-    const raw = parseCatalogParams().size;
-    if (!raw || typeof raw !== 'string') return [];
-    return raw.split(',').map((s) => s.trim()).filter(Boolean);
-  });
-  const [searchQuery, setSearchQuery] = useState(
-    () => parseCatalogParams().search
-  );
+  // Active filter state. Initialised with the same empty defaults the server renders
+  // (avoids hydration mismatches); the real values are read from the URL in syncFromUrl()
+  // right after mount.
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+  const [selectedBrand, setSelectedBrand] = useState(null);
+  const [selectedGender, setSelectedGender] = useState(null);
+  const [selectedSizes, setSelectedSizes] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Dynamic available sizes calculated server-side
   const [availableSizes, setAvailableSizes] = useState([]);
@@ -77,18 +94,6 @@ export default function CatalogSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // Whether the active catalog filter corresponds to Sneakers category
-  const isCurrentSneakers = useMemo(() => {
-    if (selectedCategory && selectedCategory.toLowerCase() === 'sneakers') {
-      return true;
-    }
-    if (selectedCategoryId && categories.length > 0) {
-      const matched = categories.find((c) => c.id === selectedCategoryId);
-      if (matched?.slug?.toLowerCase() === 'sneakers') return true;
-    }
-    return false;
-  }, [selectedCategory, selectedCategoryId, categories]);
-
   // Separate and sort available sizes into clothing (textile) and sneakers (shoe numbers)
   const { clothingSizes, sneakerSizes } = useMemo(() => {
     const clothing = [];
@@ -111,6 +116,55 @@ export default function CatalogSection() {
 
   const productsReqIdRef = useRef(0);
   const filterOptionsReqIdRef = useRef(0);
+  const selectedSizesRef = useRef(selectedSizes);
+  selectedSizesRef.current = selectedSizes;
+
+  // Pagination context of the current product list. Pagination strategy:
+  // - 0 or 1 selected size: a single query (variantSize when 1 size), paged with page/size.
+  // - 2+ sizes: the backend only supports ONE variantSize per request, so we issue one query
+  //   per selected size, each paged independently (size 50), then merge + dedupe by id and
+  //   sort by id desc. "Ver más productos" loads the next page of every query that still has more.
+  const paginationRef = useRef({ base: {}, queries: [], multi: false });
+
+  // Runs the next page of every query that still has results and returns the merged batch.
+  const fetchNextBatch = async (pagination) => {
+    const { base, queries } = pagination;
+    const active = queries.filter((q) => q.hasNext);
+    const results = await Promise.all(
+      active.map((q) =>
+        fetchProductsPage({
+          ...base,
+          variantSize: q.variantSize,
+          size: CATALOG_PAGE_SIZE,
+          page: q.nextPage,
+        })
+      )
+    );
+    const nextQueries = queries.map((q) => {
+      const idx = active.indexOf(q);
+      if (idx === -1) return q;
+      return { ...q, nextPage: results[idx].page + 1, hasNext: results[idx].hasNext };
+    });
+    let batch = [];
+    results.forEach((r) => {
+      batch = batch.concat(r.products);
+    });
+    return {
+      products: batch,
+      nextQueries,
+      // Only a single query has an exact total (sizes overlap across queries)
+      totalElements: queries.length === 1 ? results[0]?.totalElements ?? null : null,
+    };
+  };
+
+  const filterBySizes = (list, sizesVal) => {
+    if (!Array.isArray(sizesVal) || sizesVal.length === 0) return list;
+    const normSelected = sizesVal.map((s) => s.trim().toLowerCase());
+    return list.filter((p) => {
+      const available = (p.availableSizes || []).map((s) => String(s).trim().toLowerCase());
+      return normSelected.some((sel) => available.includes(sel));
+    });
+  };
 
   // Fetch products according to active filters
   const loadProducts = async (
@@ -125,39 +179,47 @@ export default function CatalogSection() {
     const reqId = productsReqIdRef.current;
 
     setIsLoading(true);
+    setIsLoadingMore(false);
+    setLoadMoreError(null);
     setErrorMessage(null);
 
     try {
-      const singleSize =
-        Array.isArray(sizesVal) && sizesVal.length === 1 ? sizesVal[0] : undefined;
-
-      const [fetchedProducts, fetchedCategories, fetchedBrands] = await Promise.all([
-        fetchProducts({
+      const sizeList = Array.isArray(sizesVal) ? sizesVal.filter(Boolean) : [];
+      const isMulti = sizeList.length > 1;
+      const currentPagination = {
+        base: {
           category: catSlug || undefined,
           categoryId: catSlug ? undefined : (catId ?? undefined),
           brand: brandSlug || undefined,
           gender: genderVal || undefined,
-          variantSize: singleSize,
           search: searchVal || undefined,
-          size: 50,
-          page: 0,
-        }),
+        },
+        queries: (isMulti ? sizeList : [sizeList[0]]).map((variantSize) => ({
+          variantSize: variantSize || undefined,
+          nextPage: 0,
+          hasNext: true,
+        })),
+        multi: isMulti,
+      };
+
+      const [firstBatch, fetchedCategories, fetchedBrands] = await Promise.all([
+        fetchNextBatch(currentPagination),
         categories.length === 0 ? fetchCategories() : Promise.resolve(categories),
         brands.length === 0 ? fetchBrands().catch(() => []) : Promise.resolve(brands),
       ]);
 
       if (reqId !== productsReqIdRef.current) return;
 
-      let finalProducts = fetchedProducts;
-      if (Array.isArray(sizesVal) && sizesVal.length > 0) {
-        const normSelected = sizesVal.map((s) => s.trim().toLowerCase());
-        finalProducts = fetchedProducts.filter((p) => {
-          const available = (p.availableSizes || []).map((s) => String(s).trim().toLowerCase());
-          return normSelected.some((sel) => available.includes(sel));
-        });
-      }
+      paginationRef.current = { ...currentPagination, queries: firstBatch.nextQueries };
+      const finalProducts = mergeUniqueProducts(
+        [],
+        filterBySizes(firstBatch.products, sizesVal),
+        isMulti
+      );
 
       setProducts(finalProducts);
+      setTotalElements(firstBatch.totalElements);
+      setHasMore(firstBatch.nextQueries.some((q) => q.hasNext));
       if (fetchedCategories && fetchedCategories.length > 0) {
         setCategories(fetchedCategories);
       }
@@ -166,12 +228,46 @@ export default function CatalogSection() {
       }
     } catch (err) {
       if (reqId !== productsReqIdRef.current) return;
+      setHasMore(false);
       setErrorMessage(
         err.message || 'No se pudo conectar con el catálogo de productos.'
       );
     } finally {
       if (reqId === productsReqIdRef.current) {
         setIsLoading(false);
+      }
+    }
+  };
+
+  // Loads the next page(s) and appends them (deduped by id). Uses the same request-id guard,
+  // so a filter change while loading discards the stale result.
+  const handleLoadMore = async () => {
+    if (isLoading || isLoadingMore || !hasMore) return;
+    const reqId = productsReqIdRef.current;
+    const pagination = paginationRef.current;
+
+    setIsLoadingMore(true);
+    setLoadMoreError(null);
+
+    try {
+      const batch = await fetchNextBatch(pagination);
+      if (reqId !== productsReqIdRef.current) return;
+
+      paginationRef.current = { ...pagination, queries: batch.nextQueries };
+      const sizesNow = selectedSizesRef.current;
+      setProducts((prev) =>
+        mergeUniqueProducts(prev, filterBySizes(batch.products, sizesNow), pagination.multi)
+      );
+      setTotalElements(batch.totalElements);
+      setHasMore(batch.nextQueries.some((q) => q.hasNext));
+    } catch (err) {
+      if (reqId !== productsReqIdRef.current) return;
+      setLoadMoreError(
+        err?.message || 'No se pudieron cargar más productos. Intentá nuevamente.'
+      );
+    } finally {
+      if (reqId === productsReqIdRef.current) {
+        setIsLoadingMore(false);
       }
     }
   };
@@ -203,17 +299,16 @@ export default function CatalogSection() {
       setAvailableSizes(loadedSizes);
 
       // Consistency: if sizes are selected but no longer available, purge them
-      setSelectedSizes((prev) => {
-        if (!prev || prev.length === 0 || loadedSizes.length === 0) return prev;
-        const valid = prev.filter((sel) =>
+      const prevSizes = selectedSizesRef.current;
+      if (prevSizes && prevSizes.length > 0 && loadedSizes.length > 0) {
+        const valid = prevSizes.filter((sel) =>
           loadedSizes.some((ls) => ls.trim().toLowerCase() === sel.trim().toLowerCase())
         );
-        if (valid.length !== prev.length) {
+        if (valid.length !== prevSizes.length) {
+          setSelectedSizes(valid);
           updateCatalogUrl({ sizes: valid }, false);
-          return valid;
         }
-        return prev;
-      });
+      }
     } catch {
       if (reqId !== filterOptionsReqIdRef.current) return;
       setAvailableSizes([]);
@@ -234,8 +329,12 @@ export default function CatalogSection() {
     setSelectedGender(parsed.gender);
     const rawSize = parsed.size;
     const sizes = rawSize ? rawSize.split(',').map((s) => s.trim()).filter(Boolean) : [];
-    setSelectedSizes(sizes);
+    // Keep the same array reference when nothing changed to avoid redundant refetches
+    setSelectedSizes((prev) =>
+      prev.length === sizes.length && prev.every((s, i) => s === sizes[i]) ? prev : sizes
+    );
     setSearchQuery(parsed.search);
+    setUrlSynced(true);
   };
 
   // On mount and URL change listeners (popstate & catalog event)
@@ -262,6 +361,7 @@ export default function CatalogSection() {
 
   // Load products whenever active filters change
   useEffect(() => {
+    if (!urlSynced) return;
     loadProducts(
       selectedCategory,
       selectedCategoryId,
@@ -271,6 +371,7 @@ export default function CatalogSection() {
       searchQuery
     );
   }, [
+    urlSynced,
     selectedCategory,
     selectedCategoryId,
     selectedBrand,
@@ -281,6 +382,7 @@ export default function CatalogSection() {
 
   // Load available size options whenever criteria other than size change
   useEffect(() => {
+    if (!urlSynced) return;
     loadSizes(
       selectedCategory,
       selectedCategoryId,
@@ -289,6 +391,7 @@ export default function CatalogSection() {
       searchQuery
     );
   }, [
+    urlSynced,
     selectedCategory,
     selectedCategoryId,
     selectedBrand,
@@ -505,7 +608,7 @@ export default function CatalogSection() {
             Selected Catalog
           </h2>
           <span className="text-[11px] font-mono tracking-widest text-brand-dark/40">
-            [{isLoading ? '--' : products.length.toString().padStart(2, '0')}]
+            [{isLoading ? '--' : (totalElements ?? products.length).toString().padStart(2, '0')}]
           </span>
         </div>
 
@@ -1031,6 +1134,28 @@ export default function CatalogSection() {
               </a>
             </article>
           ))}
+        </div>
+      )}
+
+      {/* 8. Load more (next page) */}
+      {!isLoading && !errorMessage && products.length > 0 && (hasMore || loadMoreError) && (
+        <div className="flex flex-col items-center gap-3 pt-10 sm:pt-12">
+          {loadMoreError && (
+            <p className="text-xs text-red-800" role="alert">
+              {loadMoreError}
+            </p>
+          )}
+          {hasMore && (
+            <button
+              type="button"
+              onClick={handleLoadMore}
+              disabled={isLoadingMore}
+              aria-busy={isLoadingMore}
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 text-xs font-semibold uppercase tracking-wider text-brand-dark border border-brand-dark/20 rounded-xs hover:bg-brand-dark hover:text-[#FAFAFA] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoadingMore ? 'Cargando...' : 'Ver más productos'}
+            </button>
+          )}
         </div>
       )}
     </section>

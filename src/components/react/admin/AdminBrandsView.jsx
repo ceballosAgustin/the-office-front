@@ -51,10 +51,6 @@ export default function AdminBrandsView() {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       setLoadError(
         err?.message || 'No se pudo cargar el listado de marcas.'
       );
@@ -183,10 +179,6 @@ export default function AdminBrandsView() {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       if (err?.fieldErrors && typeof err.fieldErrors === 'object') {
         setFormFieldErrors(err.fieldErrors);
       }
@@ -230,10 +222,6 @@ export default function AdminBrandsView() {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       setErrorBanner(
         err?.message || `No se pudo actualizar el estado de la marca "${brand.name}".`
       );
@@ -261,10 +249,6 @@ export default function AdminBrandsView() {
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
-        return;
-      }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
         return;
       }
 

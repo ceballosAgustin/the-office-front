@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { useCart } from '../../store/cartStore';
-import { createInquiry, formatPrice, getOptimizedImageUrl } from '../../services/api';
+import {
+  useCart,
+  getCartItemQuantityLimit,
+  MAX_CART_QTY_PER_ITEM,
+  MAX_CART_DISTINCT_ITEMS,
+} from '../../store/cartStore';
+import { createInquiry, formatPrice, formatProductSize, getOptimizedImageUrl } from '../../services/api';
 
 const PLACEHOLDER_IMAGE =
   'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22400%22%20height%3D%22500%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23F2F2F0%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20dominant-baseline%3D%22middle%22%20text-anchor%3D%22middle%22%20font-family%3D%22sans-serif%22%20font-size%3D%2214%22%20fill%3D%22%231D110D80%22%3ETHE%20OFFICE%20BA%3C%2Ftext%3E%3C%2Fsvg%3E';
@@ -81,7 +86,7 @@ export default function CartView() {
   const handleIncrement = (item) => {
     if (
       item.isAvailable === false ||
-      (item.maxStock !== undefined && item.quantity >= item.maxStock)
+      item.quantity >= getCartItemQuantityLimit(item.maxStock)
     ) {
       return;
     }
@@ -91,7 +96,7 @@ export default function CartView() {
 
   const handleAdjustToAvailable = (item) => {
     if (item.maxStock !== undefined && item.maxStock >= 1) {
-      updateQuantity(item.variantId, item.maxStock);
+      updateQuantity(item.variantId, getCartItemQuantityLimit(item.maxStock));
       setInquiryError(null);
     }
   };
@@ -122,9 +127,36 @@ export default function CartView() {
       return;
     }
 
+    if (items.length > MAX_CART_DISTINCT_ITEMS) {
+      setInquiryError({
+        status: 400,
+        title: 'Demasiados productos en el carrito',
+        message: `Una consulta admite hasta ${MAX_CART_DISTINCT_ITEMS} productos distintos. Quitá algunos y volvé a intentar.`,
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setInquiryError(null);
     setPopupBlocked(false);
+
+    // Open a blank tab synchronously, inside the click gesture, so popup blockers allow it.
+    // It is pointed to WhatsApp once the API responds (opening with 'noopener' would always return null).
+    let waWindow = null;
+    if (typeof window !== 'undefined') {
+      try {
+        waWindow = window.open('', '_blank');
+      } catch {
+        waWindow = null;
+      }
+    }
+    const closeWaWindow = () => {
+      try {
+        if (waWindow && !waWindow.closed) waWindow.close();
+      } catch {
+        // ignore
+      }
+    };
 
     try {
       const response = await createInquiry({
@@ -140,6 +172,7 @@ export default function CartView() {
         : null;
 
       if (!validUrl) {
+        closeWaWindow();
         setInquiryError({
           status: 500,
           title: 'Respuesta incompleta del servidor',
@@ -159,21 +192,20 @@ export default function CartView() {
         clear();
       }
 
-      if (typeof window !== 'undefined') {
-        const openedWindow = window.open(
-          validUrl,
-          '_blank',
-          'noopener,noreferrer'
-        );
-        if (
-          !openedWindow ||
-          openedWindow.closed ||
-          typeof openedWindow.closed === 'undefined'
-        ) {
+      if (waWindow && !waWindow.closed) {
+        try {
+          waWindow.opener = null;
+          waWindow.location.href = validUrl;
+        } catch {
+          closeWaWindow();
           setPopupBlocked(true);
         }
+      } else {
+        // The browser really blocked the tab (or the user closed it): keep the manual fallback button
+        setPopupBlocked(true);
       }
     } catch (err) {
+      closeWaWindow();
       const status = Number(err?.status) || 0;
       let title = 'No se pudo completar el registro de la consulta';
       let message =
@@ -191,6 +223,11 @@ export default function CartView() {
         message =
           err?.message ||
           'Alguno de los artículos o cantidades seleccionadas no es válido o fue desactivado.';
+      } else if (status === 429) {
+        title = 'Demasiados intentos';
+        message =
+          err?.message ||
+          'Demasiados intentos, esperá unos minutos y volvé a intentar.';
       } else if (status === 404) {
         title = 'Producto o variante no disponible';
         message =
@@ -409,6 +446,9 @@ export default function CartView() {
                 !isUnavailable &&
                 item.maxStock !== undefined &&
                 item.quantity >= item.maxStock;
+              const isAtMaxPerOrder =
+                !isUnavailable && item.quantity >= MAX_CART_QTY_PER_ITEM;
+              const quantityAtLimit = isAtMaxStock || isAtMaxPerOrder;
 
               return (
                 <article
@@ -465,7 +505,7 @@ export default function CartView() {
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-brand-dark/60">
                           <span className="font-medium text-brand-dark/80">
-                            Talle: {item.size}
+                            Talle: {formatProductSize(item.size, item)}
                           </span>
                           <span aria-hidden="true">•</span>
                           <span className="tabular-nums">
@@ -492,7 +532,7 @@ export default function CartView() {
                         type="button"
                         onClick={() => handleRemove(item.variantId)}
                         className="text-xs font-medium text-brand-dark/55 hover:text-red-700 transition-colors p-1 -mr-1 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
-                        aria-label={`Eliminar ${item.title} talle ${item.size}`}
+                        aria-label={`Eliminar ${item.title} talle ${formatProductSize(item.size, item)}`}
                         title="Eliminar artículo"
                       >
                         Eliminar
@@ -508,7 +548,7 @@ export default function CartView() {
                         <span>
                           {item.unavailableReason === 'inactive'
                             ? 'Este producto o talle ya no se encuentra disponible en el catálogo.'
-                            : `El talle ${item.size} quedó sin stock disponible (0 unidades).`}
+                            : `El talle ${formatProductSize(item.size, item)} quedó sin stock disponible (0 unidades).`}
                         </span>
                         <button
                           type="button"
@@ -552,7 +592,7 @@ export default function CartView() {
                         <div
                           className="inline-flex items-center border border-brand-dark/15 bg-white/80 rounded-xs"
                           role="group"
-                          aria-label={`Cantidad de ${item.title} talle ${item.size}`}
+                          aria-label={`Cantidad de ${item.title} talle ${formatProductSize(item.size, item)}`}
                         >
                           <button
                             type="button"
@@ -571,15 +611,14 @@ export default function CartView() {
                                 ? 'text-red-700'
                                 : 'text-brand-dark'
                               }`}
-                            aria-live="polite"
                           >
                             {item.quantity}
                           </span>
                           <button
                             type="button"
                             onClick={() => handleIncrement(item)}
-                            disabled={isUnavailable || isAtMaxStock}
-                            className={`w-10 h-10 sm:w-8 sm:h-8 flex items-center justify-center text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark ${isUnavailable || isAtMaxStock
+                            disabled={isUnavailable || quantityAtLimit}
+                            className={`w-10 h-10 sm:w-8 sm:h-8 flex items-center justify-center text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark ${isUnavailable || quantityAtLimit
                                 ? 'text-brand-dark/25 cursor-not-allowed'
                                 : 'text-brand-dark hover:bg-brand-dark/[0.05] cursor-pointer'
                               }`}
@@ -591,9 +630,11 @@ export default function CartView() {
 
                         {!isUnavailable &&
                           !isExceedingStock &&
-                          isAtMaxStock && (
+                          quantityAtLimit && (
                             <span className="text-[11px] text-brand-dark/50">
-                              Máx. disponible ({item.maxStock} u.)
+                              {isAtMaxStock
+                                ? `Máx. disponible (${item.maxStock} u.)`
+                                : `Máx. por pedido (${MAX_CART_QTY_PER_ITEM} u.)`}
                             </span>
                           )}
                       </div>

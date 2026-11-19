@@ -1,0 +1,16 @@
+# The Office BA - security headers (Cloudflare static assets)
+# CSP is Report-Only on purpose: it only logs violations in the browser console and does not block anything.
+# Once the console shows no violations in production, switch it to Content-Security-Policy.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://res.cloudinary.com; connect-src 'self' https://api.theofficeba.ar; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+/admin
+  X-Robots-Tag: noindex
+
+/admin/*
+  X-Robots-Tag: noindex

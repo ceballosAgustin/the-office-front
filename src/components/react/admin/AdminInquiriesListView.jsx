@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AdminShell from './AdminShell';
 import InquiryStatusBadge from './InquiryStatusBadge';
 import {
@@ -55,8 +55,13 @@ export default function AdminInquiriesListView() {
     setInitializedFilter(true);
   }, []);
 
+  // Request id guard: ignore responses from superseded requests
+  const loadReqIdRef = useRef(0);
+
   const loadInquiries = useCallback(
     async (targetStatus, targetPage) => {
+      loadReqIdRef.current += 1;
+      const reqId = loadReqIdRef.current;
       setIsLoading(true);
       setErrorMessage(null);
 
@@ -67,6 +72,7 @@ export default function AdminInquiriesListView() {
           size: pageSize,
           sort: 'createdAt,desc',
         });
+        if (reqId !== loadReqIdRef.current) return;
 
         setPageData({
           content: Array.isArray(res?.content) ? res.content : [],
@@ -75,19 +81,18 @@ export default function AdminInquiriesListView() {
           number: Number(res?.number) || 0,
         });
       } catch (err) {
+        if (reqId !== loadReqIdRef.current) return;
         if (err?.status === 401) {
           window.location.replace('/admin/login?reason=expired');
-          return;
-        }
-        if (err?.status === 403) {
-          window.location.replace('/admin/login?reason=forbidden');
           return;
         }
         setErrorMessage(
           err?.message || 'No se pudo cargar el listado de consultas.'
         );
       } finally {
-        setIsLoading(false);
+        if (reqId === loadReqIdRef.current) {
+          setIsLoading(false);
+        }
       }
     },
     [pageSize]

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AdminShell from './AdminShell';
 import SweetAlertModal from './SweetAlertModal';
 import {
@@ -91,8 +91,8 @@ export default function AdminProductsListView() {
         setSweetAlert({
           isOpen: true,
           type: 'success',
-          title: '¡Producto eliminado!',
-          message: 'El producto fue eliminado correctamente del catálogo.',
+          title: '¡Producto desactivado!',
+          message: 'El producto fue desactivado y quedó oculto del catálogo.',
           autoCloseMs: 3000,
           onConfirm: () => setSweetAlert(null),
         });
@@ -115,8 +115,13 @@ export default function AdminProductsListView() {
       .catch(() => {});
   }, []);
 
+  // Request id guard: ignore responses from superseded requests
+  const loadReqIdRef = useRef(0);
+
   const loadProducts = useCallback(
     async (targetStatus, targetCategoryId, targetTitle, targetPage) => {
+      loadReqIdRef.current += 1;
+      const reqId = loadReqIdRef.current;
       setIsLoading(true);
       setErrorMessage(null);
 
@@ -133,6 +138,7 @@ export default function AdminProductsListView() {
           categoryId: targetCategoryId ? Number(targetCategoryId) : null,
           title: targetTitle || undefined,
         });
+        if (reqId !== loadReqIdRef.current) return;
 
         setPageData({
           content: Array.isArray(res?.content) ? res.content : [],
@@ -141,19 +147,18 @@ export default function AdminProductsListView() {
           number: Number(res?.number) || 0,
         });
       } catch (err) {
+        if (reqId !== loadReqIdRef.current) return;
         if (err?.status === 401) {
           window.location.replace('/admin/login?reason=expired');
-          return;
-        }
-        if (err?.status === 403) {
-          window.location.replace('/admin/login?reason=forbidden');
           return;
         }
         setErrorMessage(
           err?.message || 'No se pudo cargar el listado de productos.'
         );
       } finally {
-        setIsLoading(false);
+        if (reqId === loadReqIdRef.current) {
+          setIsLoading(false);
+        }
       }
     },
     [pageSize]
@@ -224,10 +229,6 @@ export default function AdminProductsListView() {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       setActionError(
         err?.message || 'No se pudo actualizar el estado del producto.'
       );
@@ -241,9 +242,9 @@ export default function AdminProductsListView() {
     setSweetAlert({
       isOpen: true,
       type: 'confirm',
-      title: '¿Eliminar producto?',
-      message: `Esta acción es definitiva. Se eliminará el producto #${product.id} ("${product.title || 'Sin título'}").`,
-      confirmText: 'Sí, eliminar',
+      title: '¿Desactivar producto?',
+      message: `El producto #${product.id} ("${product.title || 'Sin título'}") se va a desactivar y quedará oculto del catálogo. No se borra de la base de datos.`,
+      confirmText: 'Sí, desactivar',
       cancelText: 'Cancelar',
       onCancel: () => setSweetAlert(null),
       onConfirm: async () => {
@@ -252,8 +253,8 @@ export default function AdminProductsListView() {
           setSweetAlert({
             isOpen: true,
             type: 'success',
-            title: '¡Producto eliminado!',
-            message: `El producto #${product.id} se eliminó correctamente.`,
+            title: '¡Producto desactivado!',
+            message: `El producto #${product.id} se desactivó y quedó oculto del catálogo.`,
             autoCloseMs: 2500,
             onConfirm: () => {
               setSweetAlert(null);
@@ -265,8 +266,8 @@ export default function AdminProductsListView() {
           setSweetAlert({
             isOpen: true,
             type: 'error',
-            title: 'No se pudo eliminar',
-            message: err?.message || 'Ocurrió un error al intentar eliminar el producto.',
+            title: 'No se pudo desactivar',
+            message: err?.message || 'Ocurrió un error al intentar desactivar el producto.',
             onConfirm: () => setSweetAlert(null),
           });
         }

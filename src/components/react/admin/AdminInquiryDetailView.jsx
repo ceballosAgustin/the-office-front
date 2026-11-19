@@ -7,6 +7,8 @@ import {
   confirmAdminInquiry,
   formatPrice,
   getOptimizedImageUrl,
+  parsePositiveIntId,
+  safeDecodeURIComponent,
 } from '../../../services/api';
 import { formatArgentinaDateTime } from '../../../utils/date';
 
@@ -18,21 +20,24 @@ const PLACEHOLDER_IMAGE =
  * @param {string|number} [props.inquiryId]
  */
 export default function AdminInquiryDetailView({ inquiryId: propInquiryId = null } = {}) {
-  const [resolvedId, setResolvedId] = useState(propInquiryId || null);
+  const [resolvedId, setResolvedId] = useState(parsePositiveIntId(propInquiryId));
+  // False until the URL was inspected on the client (avoids flashing the "invalid id" state)
+  const [hasResolvedUrl, setHasResolvedUrl] = useState(false);
 
   useEffect(() => {
     if (propInquiryId) {
-      setResolvedId(propInquiryId);
+      setResolvedId(parsePositiveIntId(propInquiryId));
     } else if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const queryId = params.get('id')?.trim();
+      const queryId = parsePositiveIntId(params.get('id'));
       const match = window.location.pathname.match(/\/admin\/inquiries\/([^/?#]+)/);
       const pathId =
         match && match[1] && match[1].toLowerCase() !== 'fallback'
-          ? decodeURIComponent(match[1])
+          ? parsePositiveIntId(safeDecodeURIComponent(match[1]))
           : null;
-      setResolvedId(pathId || queryId || null);
+      setResolvedId(pathId ?? queryId ?? null);
     }
+    setHasResolvedUrl(true);
   }, [propInquiryId]);
 
   const [inquiry, setInquiry] = useState(null);
@@ -46,7 +51,7 @@ export default function AdminInquiryDetailView({ inquiryId: propInquiryId = null
   const [isConfirmingSale, setIsConfirmingSale] = useState(false);
 
   // Confirm sale form fields
-  const [confirmactName, setConfirmContactName] = useState('');
+  const [confirmContactName, setConfirmContactName] = useState('');
   const [confirmContactPhone, setConfirmContactPhone] = useState('');
   const [confirmFormError, setConfirmFormError] = useState(null);
   const [confirmFieldErrors, setConfirmFieldErrors] = useState({});
@@ -57,7 +62,17 @@ export default function AdminInquiryDetailView({ inquiryId: propInquiryId = null
   const [createdOrder, setCreatedOrder] = useState(null);
 
   const loadInquiry = useCallback(async () => {
-    if (!resolvedId) return;
+    if (!hasResolvedUrl) return;
+
+    if (!resolvedId) {
+      setIsLoading(false);
+      setLoadError({
+        message: 'No se especificó un identificador de consulta válido en la dirección.',
+        isNotFound: true,
+      });
+      return;
+    }
+
     setIsLoading(true);
     setLoadError(null);
 
@@ -70,10 +85,6 @@ export default function AdminInquiryDetailView({ inquiryId: propInquiryId = null
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       setLoadError({
         message: err?.message || 'No se pudo cargar el detalle de la consulta.',
         isNotFound: err?.status === 404 || err?.isNotFound,
@@ -81,7 +92,7 @@ export default function AdminInquiryDetailView({ inquiryId: propInquiryId = null
     } finally {
       setIsLoading(false);
     }
-  }, [resolvedId]);
+  }, [hasResolvedUrl, resolvedId]);
 
   useEffect(() => {
     loadInquiry();
@@ -102,10 +113,6 @@ export default function AdminInquiryDetailView({ inquiryId: propInquiryId = null
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
-        return;
-      }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
         return;
       }
       setActionError(
@@ -135,10 +142,6 @@ export default function AdminInquiryDetailView({ inquiryId: propInquiryId = null
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
-        return;
-      }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
         return;
       }
       setActionError(
@@ -240,10 +243,6 @@ export default function AdminInquiryDetailView({ inquiryId: propInquiryId = null
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
-        return;
-      }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
         return;
       }
       if (err?.fieldErrors && typeof err.fieldErrors === 'object') {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 /**
  * SweetAlert-style floating modal for admin actions (Creation, Update, Deletion, Confirmation).
@@ -16,13 +16,42 @@ export default function SweetAlertModal({
   onCancel,
   autoCloseMs = 0,
 }) {
+  // Keep the latest callbacks in refs so parent re-renders (new inline functions)
+  // do not restart the auto-close timer or re-register listeners.
+  const onConfirmRef = useRef(onConfirm);
+  const onCancelRef = useRef(onCancel);
+  useEffect(() => {
+    onConfirmRef.current = onConfirm;
+    onCancelRef.current = onCancel;
+  });
+
+  const confirmButtonRef = useRef(null);
+
+  // Focus management: focus the primary button on open, restore previous focus on close
+  useEffect(() => {
+    if (!isOpen) return;
+    const previouslyFocused =
+      typeof document !== 'undefined' ? document.activeElement : null;
+    confirmButtonRef.current?.focus();
+
+    return () => {
+      if (
+        previouslyFocused &&
+        typeof previouslyFocused.focus === 'function' &&
+        document.contains(previouslyFocused)
+      ) {
+        previouslyFocused.focus();
+      }
+    };
+  }, [isOpen]);
+
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        if (typeof onCancel === 'function') onCancel();
-        else if (typeof onConfirm === 'function') onConfirm();
+        if (typeof onCancelRef.current === 'function') onCancelRef.current();
+        else if (typeof onConfirmRef.current === 'function') onConfirmRef.current();
       }
     };
 
@@ -31,7 +60,7 @@ export default function SweetAlertModal({
     let timer = null;
     if (autoCloseMs > 0 && type !== 'confirm') {
       timer = setTimeout(() => {
-        if (typeof onConfirm === 'function') onConfirm();
+        if (typeof onConfirmRef.current === 'function') onConfirmRef.current();
       }, autoCloseMs);
     }
 
@@ -39,7 +68,7 @@ export default function SweetAlertModal({
       window.removeEventListener('keydown', handleKeyDown);
       if (timer) clearTimeout(timer);
     };
-  }, [isOpen, autoCloseMs, type, onConfirm, onCancel]);
+  }, [isOpen, autoCloseMs, type]);
 
   if (!isOpen) return null;
 
@@ -50,7 +79,7 @@ export default function SweetAlertModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="sweetalert-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-dark/50 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-dark/50 backdrop-blur-xs animate-fadeIn"
     >
       <div
         className="bg-white rounded-xs shadow-2xl border border-brand-dark/12 max-w-sm sm:max-w-md w-full p-6 sm:p-7 text-center transform transition-all duration-200 scale-100"
@@ -142,6 +171,7 @@ export default function SweetAlertModal({
 
           <button
             type="button"
+            ref={confirmButtonRef}
             onClick={onConfirm}
             autoFocus
             className={`px-5 py-2 text-xs font-semibold uppercase tracking-wider text-white rounded-xs shadow-xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${

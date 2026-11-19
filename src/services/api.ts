@@ -461,8 +461,9 @@ export function mapBackendProduct(raw: BackendProduct): Product {
   let sortedImages: string[] = [];
   if (raw.images && Array.isArray(raw.images) && raw.images.length > 0) {
     const validImages = [...raw.images].sort((a, b) => {
-      if (a.isPrimary) return -1;
-      if (b.isPrimary) return 1;
+      const aPrimary = Boolean(a.isPrimary);
+      const bPrimary = Boolean(b.isPrimary);
+      if (aPrimary !== bPrimary) return aPrimary ? -1 : 1;
       return (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
     });
     sortedImages = validImages
@@ -554,10 +555,30 @@ export function mapBackendProduct(raw: BackendProduct): Product {
   };
 }
 
+export interface ProductsPageResult {
+  products: Product[];
+  /** Zero-based page index returned (or requested, if the backend returns a plain array). */
+  page: number;
+  /** Total pages, when the backend returns a Spring Page; null if unknown. */
+  totalPages: number | null;
+  /** Total matching elements, when the backend returns a Spring Page; null if unknown. */
+  totalElements: number | null;
+  /** True when there are more pages after this one (best effort if totals are unknown). */
+  hasNext: boolean;
+}
+
 /**
  * Fetch all active products from backend with optional category, brand, gender, variantSize filtering and pagination.
+ * Returns only the product list; use fetchProductsPage to also get pagination info.
  */
-export async function fetchProducts(options?: {
+export async function fetchProducts(options?: Parameters<typeof fetchProductsPage>[0]): Promise<Product[]> {
+  return (await fetchProductsPage(options)).products;
+}
+
+/**
+ * Same as fetchProducts but also returns pagination info (page, totalPages, totalElements).
+ */
+export async function fetchProductsPage(options?: {
   category?: string | null;
   categoryId?: number | null;
   brand?: string | null;
@@ -568,7 +589,7 @@ export async function fetchProducts(options?: {
   search?: string;
   sort?: string;
   signal?: AbortSignal;
-}): Promise<Product[]> {
+}): Promise<ProductsPageResult> {
   const baseUrl = getApiBaseUrl();
   const url = new URL(
     options?.search ? `${baseUrl}/products/search` : `${baseUrl}/products`
@@ -632,7 +653,29 @@ export async function fetchProducts(options?: {
       ? data.content
       : [];
 
-  return rawList.map(mapBackendProduct);
+  const requestedPage = options?.page ?? 0;
+  const requestedSize = options?.size ?? 50;
+  const isSpringPage = !Array.isArray(data) && data && typeof data === 'object';
+  const totalPages =
+    isSpringPage && Number.isFinite(Number(data.totalPages)) ? Number(data.totalPages) : null;
+  const totalElements =
+    isSpringPage && Number.isFinite(Number(data.totalElements)) ? Number(data.totalElements) : null;
+  const page =
+    isSpringPage && Number.isFinite(Number(data.number)) ? Number(data.number) : requestedPage;
+  const hasNext =
+    totalPages !== null
+      ? page + 1 < totalPages
+      : isSpringPage && typeof data.last === 'boolean'
+        ? !data.last
+        : rawList.length >= requestedSize;
+
+  return {
+    products: rawList.map(mapBackendProduct),
+    page,
+    totalPages,
+    totalElements,
+    hasNext,
+  };
 }
 
 /**
@@ -698,7 +741,7 @@ export async function fetchFilterOptions(options?: {
  */
 export async function fetchProductById(id: string | number): Promise<Product> {
   const baseUrl = getApiBaseUrl();
-  const url = `${baseUrl}/products/${id}`;
+  const url = `${baseUrl}/products/${encodeURIComponent(String(id))}`;
 
   let res: Response;
   try {
@@ -788,40 +831,24 @@ export async function fetchBrands(): Promise<Brand[]> {
 }
 
 /**
- * Fetch single brand details by slug.
- */
-export async function fetchBrandBySlug(slug: string): Promise<Brand | null> {
-  if (!slug || !slug.trim()) return null;
-  const baseUrl = getApiBaseUrl();
-  const url = `${baseUrl}/brands/${encodeURIComponent(slug.trim())}`;
-
-  try {
-    const res = await fetch(url, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-
-    if (!res.ok) {
-      return null;
-    }
-
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Helper to fetch all active product IDs for static path pre-rendering and sitemap.
  * Iterates across all pages using available pagination without artificial limits.
  * In production, connection errors bubble up to prevent publishing incomplete builds.
  */
 export async function getAllProductPaths(): Promise<string[]> {
+  const products = await getAllProductsForStatic();
+  return Array.from(new Set(products.map((p) => String(p.id))));
+}
+
+/**
+ * Fetches every active product across all pages (same rules as getAllProductPaths:
+ * errors bubble up in production builds; in dev an empty list is returned).
+ * Used at build time for static paths and per-product SEO metadata.
+ */
+export async function getAllProductsForStatic(): Promise<Product[]> {
   try {
-    const allIds: string[] = [];
+    const allProducts: Product[] = [];
+    const seenIds = new Set<string>();
     const pageSize = 50;
     let page = 0;
     let hasMore = true;
@@ -832,8 +859,9 @@ export async function getAllProductPaths(): Promise<string[]> {
         break;
       }
       for (const p of products) {
-        if (p?.id != null) {
-          allIds.push(String(p.id));
+        if (p?.id != null && !seenIds.has(String(p.id))) {
+          seenIds.add(String(p.id));
+          allProducts.push(p);
         }
       }
       if (products.length < pageSize) {
@@ -842,7 +870,7 @@ export async function getAllProductPaths(): Promise<string[]> {
       }
       page++;
     }
-    return Array.from(new Set(allIds));
+    return allProducts;
   } catch (err: any) {
     const isProd =
       (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.PROD) ||
@@ -907,7 +935,9 @@ export async function createInquiry(payload: InquiryRequestPayload): Promise<Inq
           ? 'Uno de los productos o variantes seleccionados ya no está disponible.'
           : res.status === 400
             ? 'Los datos de la consulta no son válidos. Verificá las variantes y cantidades seleccionadas.'
-            : `No se pudo registrar la consulta (${res.status}).`;
+            : res.status === 429
+              ? 'Demasiados intentos, esperá unos minutos y volvé a intentar.'
+              : `No se pudo registrar la consulta (${res.status}).`;
     let fieldErrors: Record<string, string> | undefined;
     let errorCode: string | undefined;
     let timestamp: string | undefined;
@@ -989,10 +1019,6 @@ export async function createInquiry(payload: InquiryRequestPayload): Promise<Inq
   return data;
 }
 
-export function formatDateTime(isoString?: string | null): string {
-  return formatArgentinaDateTime(isoString);
-}
-
 async function parseBackendErrorResponse(
   res: Response,
   fallbackMessage: string
@@ -1067,7 +1093,9 @@ export async function adminLogin(
   if (!res.ok) {
     const { message, fieldErrors } = await parseBackendErrorResponse(
       res,
-      `Error al iniciar sesión (${res.status}).`
+      res.status === 429
+        ? 'Demasiados intentos, esperá unos minutos y volvé a intentar.'
+        : `Error al iniciar sesión (${res.status}).`
     );
     throw new ApiError(message, res.status, fieldErrors);
   }
@@ -1146,9 +1174,9 @@ async function fetchAdminJson<T>(
   }
 
   if (res.status === 403) {
-    clearAdminSession();
+    // Do not log out on 403: the session is valid but lacks permission for this operation.
     throw new ApiError(
-      'Acceso denegado (403): tu cuenta no posee permisos de administrador para realizar esta operación.',
+      'No tenés permisos para realizar esta operación (403).',
       403
     );
   }
@@ -1210,7 +1238,7 @@ export async function fetchAdminInquiries(options?: {
 export async function fetchAdminInquiryById(
   id: string | number
 ): Promise<InquiryResponse> {
-  return fetchAdminJson<InquiryResponse>(`/admin/inquiries/${id}`, {
+  return fetchAdminJson<InquiryResponse>(`/admin/inquiries/${encodeURIComponent(String(id))}`, {
     method: 'GET',
   });
 }
@@ -1222,7 +1250,7 @@ export async function updateAdminInquiryStatus(
   id: string | number,
   status: 'IN_PROGRESS' | 'NOT_CONVERTED'
 ): Promise<InquiryResponse> {
-  return fetchAdminJson<InquiryResponse>(`/admin/inquiries/${id}/status`, {
+  return fetchAdminJson<InquiryResponse>(`/admin/inquiries/${encodeURIComponent(String(id))}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
   });
@@ -1244,7 +1272,7 @@ export async function confirmAdminInquiry(
   }
 
   return fetchAdminJson<InquiryConfirmationResponse>(
-    `/admin/inquiries/${id}/confirm`,
+    `/admin/inquiries/${encodeURIComponent(String(id))}/confirm`,
     {
       method: 'POST',
       body: JSON.stringify(body),
@@ -1322,7 +1350,7 @@ export async function fetchAdminProducts(options?: {
 export async function fetchAdminProductById(
   id: string | number
 ): Promise<BackendProduct> {
-  return fetchAdminJson<BackendProduct>(`/admin/products/${id}`, {
+  return fetchAdminJson<BackendProduct>(`/admin/products/${encodeURIComponent(String(id))}`, {
     method: 'GET',
   });
 }
@@ -1419,7 +1447,7 @@ export async function updateAdminProduct(
     }
   }
 
-  return fetchAdminJson<BackendProduct>(`/admin/products/${id}`, {
+  return fetchAdminJson<BackendProduct>(`/admin/products/${encodeURIComponent(String(id))}`, {
     method: 'PUT',
     body: formData,
   });
@@ -1432,19 +1460,20 @@ export async function updateAdminProductStatus(
   id: string | number,
   isActive: boolean
 ): Promise<BackendProduct> {
-  return fetchAdminJson<BackendProduct>(`/admin/products/${id}/status`, {
+  return fetchAdminJson<BackendProduct>(`/admin/products/${encodeURIComponent(String(id))}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ isActive: Boolean(isActive) }),
   });
 }
 
 /**
- * Deletes a product permanently: DELETE /api/admin/products/{id} (ROLE_ADMIN)
+ * Deactivates (soft-deletes) a product: DELETE /api/admin/products/{id} (ROLE_ADMIN).
+ * The backend does not remove the row; it hides the product from the public catalog.
  */
 export async function deleteAdminProduct(
   id: string | number
 ): Promise<{ message?: string }> {
-  return fetchAdminJson<{ message?: string }>(`/admin/products/${id}`, {
+  return fetchAdminJson<{ message?: string }>(`/admin/products/${encodeURIComponent(String(id))}`, {
     method: 'DELETE',
   });
 }
@@ -1457,7 +1486,7 @@ export async function deleteAdminProductImage(
   imageId: string | number
 ): Promise<BackendProduct> {
   return fetchAdminJson<BackendProduct>(
-    `/admin/products/${productId}/images/${imageId}`,
+    `/admin/products/${encodeURIComponent(String(productId))}/images/${encodeURIComponent(String(imageId))}`,
     {
       method: 'DELETE',
     }
@@ -1472,7 +1501,7 @@ export async function setAdminProductPrimaryImage(
   imageId: string | number
 ): Promise<BackendProduct> {
   return fetchAdminJson<BackendProduct>(
-    `/admin/products/${productId}/images/${imageId}/primary`,
+    `/admin/products/${encodeURIComponent(String(productId))}/images/${encodeURIComponent(String(imageId))}/primary`,
     {
       method: 'PATCH',
     }
@@ -1487,7 +1516,7 @@ export async function reorderAdminProductImages(
   imageIds: number[]
 ): Promise<BackendProduct> {
   return fetchAdminJson<BackendProduct>(
-    `/admin/products/${productId}/images/order`,
+    `/admin/products/${encodeURIComponent(String(productId))}/images/order`,
     {
       method: 'PATCH',
       body: JSON.stringify({
@@ -1584,7 +1613,7 @@ export async function updateAdminCategory(
     body.slug = payload.slug.trim();
   }
 
-  return fetchAdminJson<BackendCategory>(`/admin/categories/${id}`, {
+  return fetchAdminJson<BackendCategory>(`/admin/categories/${encodeURIComponent(String(id))}`, {
     method: 'PUT',
     body: JSON.stringify(body),
   });
@@ -1597,7 +1626,7 @@ export async function updateAdminCategory(
 export async function deleteAdminCategory(
   id: string | number
 ): Promise<{ message: string }> {
-  return fetchAdminJson<{ message: string }>(`/admin/categories/${id}`, {
+  return fetchAdminJson<{ message: string }>(`/admin/categories/${encodeURIComponent(String(id))}`, {
     method: 'DELETE',
   });
 }
@@ -1625,15 +1654,6 @@ export function suggestBrandSlug(input?: string | null): string {
 export async function fetchAdminBrands(): Promise<BackendBrand[]> {
   const data = await fetchAdminJson<BackendBrand[]>('/admin/brands');
   return Array.isArray(data) ? data : [];
-}
-
-/**
- * Fetches single brand details by ID: GET /api/admin/brands/{id} (ROLE_ADMIN).
- */
-export async function fetchAdminBrandById(
-  id: string | number
-): Promise<BackendBrand> {
-  return fetchAdminJson<BackendBrand>(`/admin/brands/${id}`);
 }
 
 /**
@@ -1677,7 +1697,7 @@ export async function updateAdminBrand(
     body.isActive = payload.isActive;
   }
 
-  return fetchAdminJson<BackendBrand>(`/admin/brands/${id}`, {
+  return fetchAdminJson<BackendBrand>(`/admin/brands/${encodeURIComponent(String(id))}`, {
     method: 'PUT',
     body: JSON.stringify(body),
   });
@@ -1690,7 +1710,7 @@ export async function updateAdminBrandStatus(
   id: string | number,
   isActive: boolean
 ): Promise<BackendBrand> {
-  return fetchAdminJson<BackendBrand>(`/admin/brands/${id}/status`, {
+  return fetchAdminJson<BackendBrand>(`/admin/brands/${encodeURIComponent(String(id))}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ isActive: Boolean(isActive) }),
   });
@@ -1703,7 +1723,7 @@ export async function updateAdminBrandStatus(
 export async function deleteAdminBrand(
   id: string | number
 ): Promise<{ message: string }> {
-  return fetchAdminJson<{ message: string }>(`/admin/brands/${id}`, {
+  return fetchAdminJson<{ message: string }>(`/admin/brands/${encodeURIComponent(String(id))}`, {
     method: 'DELETE',
   });
 }
@@ -1739,7 +1759,7 @@ export async function fetchAdminOrders(options?: {
 export async function fetchAdminOrderById(
   id: string | number
 ): Promise<OrderResponse> {
-  return fetchAdminJson<OrderResponse>(`/admin/orders/${id}`, {
+  return fetchAdminJson<OrderResponse>(`/admin/orders/${encodeURIComponent(String(id))}`, {
     method: 'GET',
     cache: 'no-store',
   });
@@ -1751,6 +1771,9 @@ export async function fetchAdminOrderById(
 export async function fetchAdminOrderByNumber(
   orderNumber: string
 ): Promise<OrderResponse> {
+  if (!isValidOrderNumber(orderNumber)) {
+    throw new ApiError('El número de pedido ingresado no tiene un formato válido.', 404);
+  }
   const encoded = encodeURIComponent(orderNumber.trim());
   return fetchAdminJson<OrderResponse>(`/orders/${encoded}`, {
     method: 'GET',
@@ -1766,7 +1789,7 @@ export async function updateAdminOrderStatus(
   id: string | number,
   status: OrderStatus
 ): Promise<OrderResponse> {
-  return fetchAdminJson<OrderResponse>(`/admin/orders/${id}/status`, {
+  return fetchAdminJson<OrderResponse>(`/admin/orders/${encodeURIComponent(String(id))}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
   });
@@ -2129,6 +2152,8 @@ export function getNavigationItemHref(item?: {
       const url = item.customUrl ? item.customUrl.trim() : '';
       if (!url) return '/#catalogo';
       const lower = url.toLowerCase();
+      // Browsers treat backslashes as slashes ("/\\evil.com" is "//evil.com")
+      const normalizedSlashes = url.replace(/\\/g, '/');
 
       // Block dangerous protocols, relative protocol (//) and insecure HTTP
       if (
@@ -2136,7 +2161,7 @@ export function getNavigationItemHref(item?: {
         lower.startsWith('data:') ||
         lower.startsWith('vbscript:') ||
         lower.startsWith('file:') ||
-        url.startsWith('//') ||
+        normalizedSlashes.startsWith('//') ||
         lower.startsWith('http://')
       ) {
         return '/#catalogo';
@@ -2144,7 +2169,7 @@ export function getNavigationItemHref(item?: {
 
       // Valid internal relative path
       if (url.startsWith('/')) {
-        return url;
+        return normalizedSlashes;
       }
 
       // Valid external HTTPS URL
@@ -2261,8 +2286,9 @@ export function validateCustomUrl(url?: string | null): { valid: boolean; error?
   ) {
     return { valid: false, error: 'Protocolo no permitido por razones de seguridad.' };
   }
-  if (trimmed.startsWith('//')) {
-    return { valid: false, error: 'No se permiten URLs relativas al protocolo (//).' };
+  // Browsers treat backslashes as slashes, so "/\\host" is equivalent to "//host"
+  if (trimmed.replace(/\\/g, '/').startsWith('//')) {
+    return { valid: false, error: 'No se permiten URLs relativas al protocolo (// o /\\).' };
   }
   if (lower.startsWith('http://')) {
     return {
@@ -2331,18 +2357,6 @@ export async function fetchAdminNavigationSections(): Promise<NavSectionResponse
 }
 
 /**
- * Fetches a single navigation section by ID: GET /api/admin/navigation/sections/{id} (ROLE_ADMIN)
- */
-export async function fetchAdminNavigationSectionById(
-  id: string | number
-): Promise<NavSectionResponse> {
-  return fetchAdminJson<NavSectionResponse>(`/admin/navigation/sections/${id}`, {
-    method: 'GET',
-    cache: 'no-store',
-  });
-}
-
-/**
  * Creates a new navigation section: POST /api/admin/navigation/sections (ROLE_ADMIN)
  */
 export async function createAdminNavigationSection(
@@ -2384,7 +2398,7 @@ export async function updateAdminNavigationSection(
     body.isVisible = payload.isVisible;
   }
 
-  return fetchAdminJson<NavSectionResponse>(`/admin/navigation/sections/${id}`, {
+  return fetchAdminJson<NavSectionResponse>(`/admin/navigation/sections/${encodeURIComponent(String(id))}`, {
     method: 'PUT',
     body: JSON.stringify(body),
   });
@@ -2397,7 +2411,7 @@ export async function updateAdminNavigationSectionStatus(
   id: string | number,
   isVisible: boolean
 ): Promise<NavSectionResponse> {
-  return fetchAdminJson<NavSectionResponse>(`/admin/navigation/sections/${id}/status`, {
+  return fetchAdminJson<NavSectionResponse>(`/admin/navigation/sections/${encodeURIComponent(String(id))}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ isVisible: Boolean(isVisible) }),
   });
@@ -2410,7 +2424,7 @@ export async function updateAdminNavigationSectionStatus(
 export async function deleteAdminNavigationSection(
   id: string | number
 ): Promise<{ message: string }> {
-  return fetchAdminJson<{ message: string }>(`/admin/navigation/sections/${id}`, {
+  return fetchAdminJson<{ message: string }>(`/admin/navigation/sections/${encodeURIComponent(String(id))}`, {
     method: 'DELETE',
   });
 }
@@ -2461,7 +2475,7 @@ export async function createAdminNavigationItem(
     body.isVisible = payload.isVisible;
   }
 
-  return fetchAdminJson<NavItemResponse>(`/admin/navigation/sections/${sectionId}/items`, {
+  return fetchAdminJson<NavItemResponse>(`/admin/navigation/sections/${encodeURIComponent(String(sectionId))}/items`, {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -2501,7 +2515,7 @@ export async function updateAdminNavigationItem(
     body.isVisible = payload.isVisible;
   }
 
-  return fetchAdminJson<NavItemResponse>(`/admin/navigation/items/${id}`, {
+  return fetchAdminJson<NavItemResponse>(`/admin/navigation/items/${encodeURIComponent(String(id))}`, {
     method: 'PUT',
     body: JSON.stringify(body),
   });
@@ -2514,7 +2528,7 @@ export async function updateAdminNavigationItemStatus(
   id: string | number,
   isVisible: boolean
 ): Promise<NavItemResponse> {
-  return fetchAdminJson<NavItemResponse>(`/admin/navigation/items/${id}/status`, {
+  return fetchAdminJson<NavItemResponse>(`/admin/navigation/items/${encodeURIComponent(String(id))}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ isVisible: Boolean(isVisible) }),
   });
@@ -2527,7 +2541,7 @@ export async function updateAdminNavigationItemStatus(
 export async function deleteAdminNavigationItem(
   id: string | number
 ): Promise<{ message: string }> {
-  return fetchAdminJson<{ message: string }>(`/admin/navigation/items/${id}`, {
+  return fetchAdminJson<{ message: string }>(`/admin/navigation/items/${encodeURIComponent(String(id))}`, {
     method: 'DELETE',
   });
 }
@@ -2540,7 +2554,7 @@ export async function reorderAdminNavigationItems(
   items: OrderItemPosition[]
 ): Promise<NavItemResponse[]> {
   return fetchAdminJson<NavItemResponse[]>(
-    `/admin/navigation/sections/${sectionId}/items/order`,
+    `/admin/navigation/sections/${encodeURIComponent(String(sectionId))}/items/order`,
     {
       method: 'PATCH',
       body: JSON.stringify({ items }),
@@ -2550,3 +2564,40 @@ export async function reorderAdminNavigationItems(
 
 
 
+
+// =========================================================================
+// ID / ROUTE PARAM HELPERS
+// =========================================================================
+
+/**
+ * Parses a numeric id coming from a URL (?id= or path segment).
+ * Accepts only strings/numbers made of digits (/^\d+$/) and returns a positive safe integer, or null.
+ */
+export function parsePositiveIntId(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * decodeURIComponent that never throws on malformed sequences (e.g. "%E0%A4%A"); returns null instead.
+ */
+export function safeDecodeURIComponent(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Order numbers look like ORD-yyMMdd-XXXXXX (not integers).
+ */
+export function isValidOrderNumber(value: unknown): value is string {
+  return typeof value === 'string' && /^ORD-\d{6,8}-[A-Za-z0-9]{4,12}$/.test(value.trim());
+}

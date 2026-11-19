@@ -5,24 +5,29 @@ import {
   fetchAdminOrderById,
   updateAdminOrderStatus,
   formatPrice,
+  parsePositiveIntId,
+  safeDecodeURIComponent,
 } from '../../../services/api';
 import { formatArgentinaDateTime } from '../../../utils/date';
 
+// Returns the numeric order id as a string, or null when missing/invalid.
 function resolveClientOrderId(propOrderId) {
   if (propOrderId !== undefined && propOrderId !== null && String(propOrderId).trim() !== '') {
-    return String(propOrderId).trim();
+    const propId = parsePositiveIntId(String(propOrderId));
+    return propId !== null ? String(propId) : null;
   }
   if (typeof window === 'undefined') {
     return null;
   }
   const params = new URLSearchParams(window.location.search);
-  const queryId = params.get('id');
-  if (queryId && queryId.trim()) {
-    return queryId.trim();
+  const queryId = parsePositiveIntId(params.get('id'));
+  if (queryId !== null) {
+    return String(queryId);
   }
   const pathMatch = window.location.pathname.match(/^\/admin\/orders\/([^/?#]+)\/?$/);
   if (pathMatch && pathMatch[1] && pathMatch[1].toLowerCase() !== 'detail') {
-    return decodeURIComponent(pathMatch[1].trim());
+    const pathId = parsePositiveIntId(safeDecodeURIComponent(pathMatch[1].trim()));
+    return pathId !== null ? String(pathId) : null;
   }
   return null;
 }
@@ -85,10 +90,6 @@ export default function AdminOrderDetailView({ orderId: propOrderId = null } = {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       setLoadError({
         message: err?.message || 'No se pudo cargar el detalle del pedido.',
         isNotFound: err?.status === 404 || err?.isNotFound,
@@ -120,10 +121,6 @@ export default function AdminOrderDetailView({ orderId: propOrderId = null } = {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       setActionError(
         err?.message || 'No se pudo actualizar el estado del pedido a COMPLETED.'
       );
@@ -149,10 +146,6 @@ export default function AdminOrderDetailView({ orderId: propOrderId = null } = {
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
-        return;
-      }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
         return;
       }
       setActionError(

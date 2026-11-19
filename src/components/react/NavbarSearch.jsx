@@ -52,17 +52,14 @@ export default function NavbarSearch() {
   useEffect(() => {
     if (!isOpen) return;
 
-    // Close mobile nav menu if open to avoid overlapping panels on small screens
+    // Close mobile nav drawer if open to avoid overlapping panels on small screens.
+    // The drawer is owned by NavbarNavigation (rendered only while open); its toggle button
+    // handles open/close state, aria-expanded and icons, so we simply trigger it.
     if (typeof document !== 'undefined') {
-      const mobileMenu = document.getElementById('mobile-nav-menu');
-      const mobileToggle = document.getElementById('mobile-menu-toggle');
-      const iconOpen = document.getElementById('menu-icon-open');
-      const iconClose = document.getElementById('menu-icon-close');
-      if (mobileMenu && !mobileMenu.classList.contains('hidden')) {
-        mobileMenu.classList.add('hidden');
-        mobileToggle?.setAttribute('aria-expanded', 'false');
-        iconOpen?.classList.remove('hidden');
-        iconClose?.classList.add('hidden');
+      const mobileDrawer = document.getElementById('navbar-mobile-drawer');
+      const mobileToggle = document.getElementById('navbar-mobile-toggle-btn');
+      if (mobileDrawer && mobileToggle) {
+        mobileToggle.click();
       }
     }
 

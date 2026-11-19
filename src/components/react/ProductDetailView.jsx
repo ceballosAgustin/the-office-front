@@ -6,6 +6,8 @@ import {
   fetchProducts,
   formatPrice,
   buildCatalogHref,
+  parsePositiveIntId,
+  safeDecodeURIComponent,
 } from '../../services/api';
 
 function parseLocationState(fallbackProductId) {
@@ -22,15 +24,17 @@ function parseLocationState(fallbackProductId) {
   }
 
   const params = new URLSearchParams(window.location.search);
-  const queryId = params.get('id')?.trim();
+  const queryId = parsePositiveIntId(params.get('id'));
 
   const match = window.location.pathname.match(/\/products\/([^/?#]+)/);
   const pathId =
     match && match[1] && match[1].toLowerCase() !== 'fallback'
-      ? decodeURIComponent(match[1])
+      ? parsePositiveIntId(safeDecodeURIComponent(match[1]))
       : null;
-  const resolvedProductId =
-    pathId || queryId || String(fallbackProductId || '');
+  // Only numeric ids are valid; anything else resolves to '' (shown as "Producto no especificado")
+  const resolvedProductId = String(
+    pathId ?? queryId ?? parsePositiveIntId(String(fallbackProductId || '')) ?? ''
+  );
 
   // Category slug / legacy categoryId / fromCategory
   const rawCatSlug =
@@ -216,7 +220,14 @@ export default function ProductDetailView({ productId = '' } = {}) {
     return list;
   };
 
+  // Request id guard: only the latest navigation's result is applied
+  const loadReqIdRef = useRef(0);
+
   const loadProductAndContext = async (targetState) => {
+    loadReqIdRef.current += 1;
+    const reqId = loadReqIdRef.current;
+    const isStale = () => reqId !== loadReqIdRef.current;
+
     const currentId = String(targetState.productId || '');
     if (!currentId) {
       setIsLoading(false);
@@ -236,6 +247,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
         fetchProductById(currentId),
         fetchCollectionForContext(targetState).catch(() => []),
       ]);
+      if (isStale()) return;
 
       setProduct(productData);
       setSelectedVariant(null);
@@ -260,6 +272,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
       if (indexInContext === -1 && hasSpecificFilters) {
         // Fallback to general catalog for sequence list only, but preserve origin filter context
         const generalList = await fetchCollectionForContext({}).catch(() => []);
+        if (isStale()) return;
         setCatalogList(generalList);
         setEffectiveContext({
           category: targetState.category,
@@ -281,13 +294,16 @@ export default function ProductDetailView({ productId = '' } = {}) {
         });
       }
     } catch (err) {
+      if (isStale()) return;
       setError({
         message: err.message || 'Error al obtener el producto.',
         isNotFound: err.isNotFound || false,
       });
       updateProductMeta(null);
     } finally {
-      setIsLoading(false);
+      if (!isStale()) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -724,7 +740,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
           {product.description && (
             <div className="space-y-3">
               <h2 className="sr-only">Descripción</h2>
-              <p className="text-sm sm:text-[15px] text-brand-dark/75 leading-relaxed">
+              <p className="text-sm sm:text-[15px] text-brand-dark/75 leading-relaxed whitespace-pre-line">
                 {product.description}
               </p>
             </div>

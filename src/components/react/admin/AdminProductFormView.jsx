@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AdminShell from './AdminShell';
 import SweetAlertModal from './SweetAlertModal';
 import {
@@ -16,6 +16,8 @@ import {
   normalizeSneakerSizeValue,
   isSneakersCategory,
   getOptimizedImageUrl,
+  parsePositiveIntId,
+  safeDecodeURIComponent,
 } from '../../../services/api';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB per file
@@ -55,6 +57,12 @@ function detectInitialSizingMode(variants) {
   return 'multi';
 }
 
+// Normalises an id coming from props/URL into a numeric string, or null when invalid.
+function toIdString(value) {
+  const parsed = parsePositiveIntId(value);
+  return parsed === null ? null : String(parsed);
+}
+
 function formatFileSize(bytes) {
   if (!bytes || bytes <= 0) return '0 KB';
   if (bytes >= 1024 * 1024) {
@@ -74,28 +82,32 @@ export default function AdminProductFormView({
 } = {}) {
   const isEdit = mode === 'edit';
 
-  const [resolvedId, setResolvedId] = useState(propProductId || null);
+  const [resolvedId, setResolvedId] = useState(toIdString(propProductId));
+  // False until the URL was inspected on the client (avoids flashing the "invalid id" state)
+  const [hasResolvedUrl, setHasResolvedUrl] = useState(false);
 
   useEffect(() => {
     if (propProductId) {
-      setResolvedId(propProductId);
+      setResolvedId(toIdString(propProductId));
     } else if (isEdit && typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const queryId = params.get('id')?.trim();
+      const queryId = toIdString(params.get('id'));
       const parts = window.location.pathname.split('/').filter(Boolean);
       // Expected: ['admin', 'products', '{id}', 'edit']
       const idx = parts.indexOf('products');
+      let pathId = null;
       if (
         idx !== -1 &&
         parts[idx + 1] &&
         parts[idx + 1] !== 'new' &&
         parts[idx + 1] !== 'fallback-edit'
       ) {
-        setResolvedId(parts[idx + 1]);
-      } else if (queryId) {
-        setResolvedId(queryId);
+        const decoded = safeDecodeURIComponent(parts[idx + 1]);
+        pathId = decoded === null ? null : toIdString(decoded);
       }
+      setResolvedId(pathId ?? queryId);
     }
+    setHasResolvedUrl(true);
   }, [propProductId, isEdit]);
 
   // Loading & Error states
@@ -205,6 +217,17 @@ export default function AdminProductFormView({
   }, []);
 
   const loadFormResources = useCallback(async () => {
+    if (isEdit && !hasResolvedUrl) return;
+
+    if (isEdit && !resolvedId) {
+      setIsLoadingInitial(false);
+      setLoadError({
+        message: 'No se especificó un identificador de producto válido en la dirección.',
+        isNotFound: true,
+      });
+      return;
+    }
+
     setIsLoadingInitial(true);
     setLoadError(null);
 
@@ -213,7 +236,6 @@ export default function AdminProductFormView({
       const brandsPromise = fetchAdminBrands().catch(() => []);
 
       if (isEdit) {
-        if (!resolvedId) return;
         const [cats, allBrands, prod] = await Promise.all([
           catsPromise,
           brandsPromise,
@@ -263,10 +285,6 @@ export default function AdminProductFormView({
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       setLoadError({
         message: err?.message || 'No se pudo cargar la información del producto.',
         isNotFound: err?.status === 404 || err?.isNotFound,
@@ -274,23 +292,32 @@ export default function AdminProductFormView({
     } finally {
       setIsLoadingInitial(false);
     }
-  }, [isEdit, resolvedId, syncProductDataToState]);
+  }, [isEdit, hasResolvedUrl, resolvedId, syncProductDataToState]);
 
   useEffect(() => {
-    if (isEdit && !resolvedId) return;
     loadFormResources();
-  }, [isEdit, resolvedId, loadFormResources]);
+  }, [loadFormResources]);
 
-  // Cleanup object URLs on unmount
+  // Preview object URLs currently alive. They are revoked only on explicit removal, clear,
+  // successful submit or unmount (never as a side effect of a state change/updater).
+  const previewUrlsRef = useRef(new Set());
+
+  const revokePreviewUrl = useCallback((url) => {
+    if (!url) return;
+    URL.revokeObjectURL(url);
+    previewUrlsRef.current.delete(url);
+  }, []);
+
+  const revokeAllPreviewUrls = useCallback(() => {
+    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrlsRef.current.clear();
+  }, []);
+
   useEffect(() => {
     return () => {
-      queuedFiles.forEach((item) => {
-        if (item.previewUrl) {
-          URL.revokeObjectURL(item.previewUrl);
-        }
-      });
+      revokeAllPreviewUrls();
     };
-  }, [queuedFiles]);
+  }, [revokeAllPreviewUrls]);
 
   // Real-time Active Stock calculation
   const totalActiveStock = variants
@@ -553,7 +580,7 @@ export default function AdminProductFormView({
       0
     );
     let addedBytes = 0;
-    const validNewItems = [];
+    const validFiles = [];
 
     for (const file of selectedList) {
       if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -573,12 +600,19 @@ export default function AdminProductFormView({
         e.target.value = '';
         return;
       }
-      validNewItems.push({
+      validFiles.push(file);
+    }
+
+    // Only create object URLs once every file passed validation
+    const validNewItems = validFiles.map((file) => {
+      const previewUrl = URL.createObjectURL(file);
+      previewUrlsRef.current.add(previewUrl);
+      return {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         file,
-        previewUrl: URL.createObjectURL(file),
-      });
-    }
+        previewUrl,
+      };
+    });
 
     setQueuedFiles((prev) => [...prev, ...validNewItems]);
     e.target.value = '';
@@ -586,13 +620,11 @@ export default function AdminProductFormView({
 
   const handleRemoveQueuedFile = (itemId) => {
     setFileUploadError(null);
-    setQueuedFiles((prev) => {
-      const target = prev.find((i) => i.id === itemId);
-      if (target?.previewUrl) {
-        URL.revokeObjectURL(target.previewUrl);
-      }
-      return prev.filter((i) => i.id !== itemId);
-    });
+    const target = queuedFiles.find((i) => i.id === itemId);
+    if (target?.previewUrl) {
+      revokePreviewUrl(target.previewUrl);
+    }
+    setQueuedFiles((prev) => prev.filter((i) => i.id !== itemId));
   };
 
   // Gallery API Operations (Edit Mode)
@@ -615,10 +647,6 @@ export default function AdminProductFormView({
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
-        return;
-      }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
         return;
       }
       setFormError(
@@ -659,10 +687,6 @@ export default function AdminProductFormView({
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       setFormError(err?.message || 'No se pudo reordenar la galería.');
     } finally {
       setIsGalleryBusy(false);
@@ -693,10 +717,6 @@ export default function AdminProductFormView({
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
-        return;
-      }
       setFormError(
         err?.message || 'No se pudo eliminar la fotografía seleccionada.'
       );
@@ -724,10 +744,6 @@ export default function AdminProductFormView({
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
-        return;
-      }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
         return;
       }
       setFormError(
@@ -861,9 +877,7 @@ export default function AdminProductFormView({
           filesToSend
         );
         // Clear queued files after successful upload
-        queuedFiles.forEach((item) => {
-          if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-        });
+        revokeAllPreviewUrls();
         setQueuedFiles([]);
         syncProductDataToState(updated);
         setFormSuccess(
@@ -879,9 +893,7 @@ export default function AdminProductFormView({
         });
       } else {
         const created = await createAdminProduct(payload, filesToSend);
-        queuedFiles.forEach((item) => {
-          if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-        });
+        revokeAllPreviewUrls();
         setQueuedFiles([]);
         setSweetAlert({
           isOpen: true,
@@ -897,10 +909,6 @@ export default function AdminProductFormView({
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
-        return;
-      }
-      if (err?.status === 403) {
-        window.location.replace('/admin/login?reason=forbidden');
         return;
       }
       if (err?.fieldErrors && typeof err.fieldErrors === 'object') {
@@ -926,9 +934,9 @@ export default function AdminProductFormView({
     setSweetAlert({
       isOpen: true,
       type: 'confirm',
-      title: '¿Eliminar este producto?',
-      message: `Esta acción es definitiva. Se eliminará el producto #${resolvedId} ("${title || 'Sin título'}") y todas sus imágenes y variantes asociadas.`,
-      confirmText: 'Sí, eliminar',
+      title: '¿Desactivar este producto?',
+      message: `El producto #${resolvedId} ("${title || 'Sin título'}") se va a desactivar y quedará oculto del catálogo. No se borra de la base de datos y podés volver a activarlo cuando quieras.`,
+      confirmText: 'Sí, desactivar',
       cancelText: 'Cancelar',
       onCancel: () => setSweetAlert(null),
       onConfirm: async () => {
@@ -938,8 +946,8 @@ export default function AdminProductFormView({
           setSweetAlert({
             isOpen: true,
             type: 'success',
-            title: '¡Producto eliminado!',
-            message: 'El producto fue eliminado correctamente.',
+            title: '¡Producto desactivado!',
+            message: 'El producto fue desactivado y quedó oculto del catálogo.',
             autoCloseMs: 2000,
             onConfirm: () => {
               window.location.replace('/admin/products?deleted=1');
@@ -949,8 +957,8 @@ export default function AdminProductFormView({
           setSweetAlert({
             isOpen: true,
             type: 'error',
-            title: 'Error al eliminar',
-            message: err?.message || 'No se pudo eliminar el producto.',
+            title: 'Error al desactivar',
+            message: err?.message || 'No se pudo desactivar el producto.',
             onConfirm: () => setSweetAlert(null),
           });
         } finally {
@@ -2112,10 +2120,7 @@ export default function AdminProductFormView({
                         <button
                           type="button"
                           onClick={() => {
-                            queuedFiles.forEach((item) => {
-                              if (item.previewUrl)
-                                URL.revokeObjectURL(item.previewUrl);
-                            });
+                            revokeAllPreviewUrls();
                             setQueuedFiles([]);
                           }}
                           className="text-[11px] text-red-700 hover:underline cursor-pointer"

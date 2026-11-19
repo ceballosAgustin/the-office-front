@@ -35,40 +35,21 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
     });
   }, [totalImages]);
 
-  // Keyboard navigation (ArrowLeft / ArrowRight) when multiple images exist
-  useEffect(() => {
+  // Keyboard navigation (ArrowLeft / ArrowRight), scoped to the focused gallery container
+  const handleKeyDown = (event) => {
     if (!hasMultipleImages) return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return;
+    }
 
-    const handleKeyDown = (event) => {
-      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
-        return;
-      }
-
-      const target = event.target;
-      if (target && typeof target === 'object') {
-        const tagName = target.tagName ? target.tagName.toUpperCase() : '';
-        if (
-          tagName === 'INPUT' ||
-          tagName === 'TEXTAREA' ||
-          tagName === 'SELECT' ||
-          target.isContentEditable
-        ) {
-          return;
-        }
-      }
-
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault();
-        handlePrevious();
-      } else if (event.key === 'ArrowRight') {
-        event.preventDefault();
-        handleNext();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasMultipleImages, handlePrevious, handleNext]);
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      handlePrevious();
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      handleNext();
+    }
+  };
 
   if (totalImages === 0) {
     return (
@@ -81,7 +62,17 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
   const currentImage = validImages[safeIndex] || validImages[0];
 
   return (
-    <div className="flex flex-col gap-3 sm:gap-4 w-full">
+    <div
+      className="flex flex-col gap-3 sm:gap-4 w-full focus-visible:outline-none"
+      {...(hasMultipleImages
+        ? {
+            tabIndex: 0,
+            role: 'group',
+            'aria-label': `Galería de imágenes de ${title}. Usá las flechas izquierda y derecha para navegar.`,
+            onKeyDown: handleKeyDown,
+          }
+        : {})}
+    >
       {/* Main Image Frame (dynamically fits image proportions without forced 4:5 vertical margins) */}
       <div className="relative w-full overflow-hidden rounded-xs flex items-center justify-center">
         <img
