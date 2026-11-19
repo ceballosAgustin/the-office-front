@@ -86,7 +86,7 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
 
   if (totalImages === 0) {
     return (
-      <div className="aspect-[4/3] max-h-[500px] w-full bg-brand-dark/5 border border-brand-dark/10 rounded-xs flex items-center justify-center text-brand-dark/40 text-sm">
+      <div className="aspect-[4/3] max-h-[500px] w-full bg-sunken rounded-tile flex items-center justify-center text-ink-muted text-sm">
         No hay imagen disponible
       </div>
     );
@@ -105,19 +105,19 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
         : {})}
     >
       {/* Main Image Frame (dynamically fits image proportions without forced 4:5 vertical margins) */}
-      <div className="relative w-full overflow-hidden rounded-xs flex items-center justify-center">
+      <div className="relative w-full overflow-hidden rounded-tile bg-sunken flex items-center justify-center">
         {displayedSrc ? (
           <img
             src={displayedSrc}
             alt={`${title} — Vista ${safeIndex + 1} de ${totalImages}`}
-            className="w-full h-auto max-h-[75vh] sm:max-h-[600px] object-contain object-center select-none animate-fadeIn"
+            className="w-full h-auto max-h-[75vh] sm:max-h-[600px] object-contain object-center select-none animate-fadeIn mix-blend-multiply"
             loading="eager"
             decoding="async"
           />
         ) : (
           // Reserved space while the first image loads (avoids the frame collapsing and jumping)
           <div
-            className="w-full aspect-[4/5] max-h-[75vh] sm:max-h-[600px] bg-brand-dark/5 animate-pulse"
+            className="w-full aspect-[4/5] max-h-[75vh] sm:max-h-[600px] bg-sunken animate-pulse"
             role="img"
             aria-label={`Cargando imagen de ${title}`}
           />
@@ -130,7 +130,7 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
               type="button"
               onClick={handlePrevious}
               aria-label="Imagen anterior"
-              className="absolute left-2.5 sm:left-3.5 top-1/2 -translate-y-1/2 z-10 inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xs bg-[#FAFAFA]/85 hover:bg-brand-dark text-brand-dark hover:text-[#FAFAFA] border border-brand-dark/15 backdrop-blur-xs shadow-xs transition-all duration-150 cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark"
+              className="absolute left-2.5 sm:left-3.5 top-1/2 -translate-y-1/2 z-10 inline-flex items-center justify-center w-11 h-11 rounded-full bg-white hover:bg-brand-dark text-brand-dark hover:text-brand-sand shadow-hairline transition-all duration-150 cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -152,7 +152,7 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
               type="button"
               onClick={handleNext}
               aria-label="Imagen siguiente"
-              className="absolute right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 z-10 inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xs bg-[#FAFAFA]/85 hover:bg-brand-dark text-brand-dark hover:text-[#FAFAFA] border border-brand-dark/15 backdrop-blur-xs shadow-xs transition-all duration-150 cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark"
+              className="absolute right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 z-10 inline-flex items-center justify-center w-11 h-11 rounded-full bg-white hover:bg-brand-dark text-brand-dark hover:text-brand-sand shadow-hairline transition-all duration-150 cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -170,7 +170,7 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
               </svg>
             </button>
 
-            <div className="absolute bottom-3 right-3 px-2 py-0.5 rounded-full bg-[#1D110D]/75 backdrop-blur-xs text-[#FAFAFA] text-[10px] font-mono tracking-wider tabular-nums pointer-events-none z-10">
+            <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-brand-dark text-brand-light text-xs font-medium tabular-nums pointer-events-none z-10">
               {safeIndex + 1} / {totalImages}
             </div>
           </>
@@ -194,16 +194,16 @@ export default function ProductGallery({ images = [], title = 'Producto' }) {
                 aria-selected={isSelected}
                 aria-label={`Ver imagen ${idx + 1} de ${title}`}
                 onClick={() => setSelectedIndex(idx)}
-                className={`relative aspect-square w-16 sm:w-20 shrink-0 overflow-hidden rounded-xs transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark flex items-center justify-center p-0.5 ${
+                className={`relative aspect-square w-16 sm:w-20 shrink-0 overflow-hidden rounded-ctl bg-sunken transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark flex items-center justify-center p-0.5 ${
                   isSelected
                     ? 'ring-2 ring-brand-dark opacity-100'
-                    : 'opacity-60 hover:opacity-100 ring-1 ring-brand-dark/15'
+                    : 'opacity-70 hover:opacity-100 ring-1 ring-hairline'
                 }`}
               >
                 <img
                   src={getOptimizedImageUrl(img, 'thumbnail')}
                   alt={`Miniatura ${idx + 1}`}
-                  className="w-full h-full object-contain object-center select-none"
+                  className="w-full h-full object-contain object-center select-none mix-blend-multiply"
                   loading="lazy"
                 />
               </button>

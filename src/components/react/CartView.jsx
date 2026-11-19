@@ -254,20 +254,20 @@ export default function CartView() {
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-10 md:py-14">
       {/* Breadcrumbs Navigation */}
       <nav className="mb-6 sm:mb-8" aria-label="Breadcrumb">
-        <ol className="flex items-center flex-wrap gap-2 text-xs text-brand-dark/50">
+        <ol className="flex items-center flex-wrap gap-2 text-xs text-ink-muted">
           <li>
             <a
               href="/"
               className="hover:text-brand-dark transition-colors duration-150 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
             >
-              Home
+              Inicio
             </a>
           </li>
           <li aria-hidden="true" className="select-none text-brand-dark/30">
             /
           </li>
           <li className="font-medium text-brand-dark" aria-current="page">
-            Shopping Bag
+            Tu carrito
           </li>
         </ol>
       </nav>
@@ -275,10 +275,10 @@ export default function CartView() {
       {/* Page Header */}
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-brand-dark/[0.08] pb-4 mb-8">
         <div className="flex items-baseline gap-3">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-brand-dark uppercase">
-            Shopping Bag
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-[-0.03em] text-brand-dark">
+            Tu carrito
           </h1>
-          <span className="text-xs font-mono tracking-widest text-brand-dark/40">
+          <span className="text-xs font-mono tracking-widest text-ink-muted">
             [{!isHydrated ? '--' : totalCount.toString().padStart(2, '0')}]
           </span>
         </div>
@@ -289,7 +289,7 @@ export default function CartView() {
               type="button"
               onClick={handleRefreshStock}
               disabled={isCheckingStock}
-              className="text-xs font-medium text-brand-dark/65 hover:text-brand-dark underline underline-offset-4 transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs py-1"
+              className="inline-flex min-h-11 items-center text-[13px] font-medium text-ink-muted hover:text-brand-dark underline underline-offset-4 transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 rounded-ctl"
             >
               {isCheckingStock
                 ? 'Verificando disponibilidad...'
@@ -298,7 +298,7 @@ export default function CartView() {
             <button
               type="button"
               onClick={handleClearCart}
-              className="text-xs font-medium text-brand-dark/55 hover:text-brand-dark underline underline-offset-4 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs py-1"
+              className="inline-flex min-h-11 items-center text-[13px] font-medium text-ink-muted hover:text-brand-dark underline underline-offset-4 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 rounded-ctl"
             >
               Vaciar carrito
             </button>
@@ -309,21 +309,21 @@ export default function CartView() {
       {/* Loading Hydration State */}
       {!isHydrated && (
         <div className="py-16 space-y-6 animate-pulse">
-          <div className="h-28 w-full bg-[#F2F2F0] rounded-xs" />
-          <div className="h-28 w-full bg-[#F2F2F0] rounded-xs" />
+          <div className="h-28 w-full bg-sunken rounded-card" />
+          <div className="h-28 w-full bg-sunken rounded-card" />
         </div>
       )}
 
       {/* Registered Inquiry Reference Banner */}
       {isHydrated && inquiryResult && (
         <div
-          className="mb-8 p-5 sm:p-6 bg-[#FAF9F6] border border-brand-dark/15 rounded-xs space-y-4"
+          className="mb-8 p-5 sm:p-6 bg-white shadow-card rounded-tile space-y-4"
           role="status"
           aria-live="polite"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
-              <span className="inline-block text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-dark/50">
+              <span className="inline-block text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">
                 Consulta comercial registrada
               </span>
               <h2 className="text-base sm:text-lg font-bold tracking-tight text-brand-dark">
@@ -333,7 +333,7 @@ export default function CartView() {
             </div>
             {inquiryResult.totalAmount !== undefined && (
               <div className="text-right">
-                <span className="block text-[10px] uppercase tracking-wider text-brand-dark/45">
+                <span className="block text-xs uppercase tracking-wider text-ink-muted">
                   Total estimado registrado
                 </span>
                 <span className="text-sm sm:text-base font-semibold text-brand-dark tabular-nums">
@@ -355,7 +355,7 @@ export default function CartView() {
           </p>
 
           {popupBlocked && (
-            <p className="text-xs font-medium text-amber-800 bg-amber-50/80 border border-amber-200/80 px-3 py-2 rounded-xs">
+            <p className="text-xs font-medium text-amber-800 bg-amber-50 px-3 py-2 rounded-card">
               Tu navegador bloqueó la apertura automática de la pestaña. Pulsá
               el botón a continuación para abrir WhatsApp manualmente.
             </p>
@@ -367,7 +367,7 @@ export default function CartView() {
                 href={inquiryResult.whatsappUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] bg-brand-dark hover:opacity-90 transition-opacity rounded-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30"
+                className="inline-flex h-11 items-center justify-center gap-2 px-6 text-sm font-semibold text-brand-light bg-brand-dark hover:bg-ink-soft transition-colors rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30"
               >
                 Abrir conversación en WhatsApp ↗
               </a>
@@ -378,7 +378,7 @@ export default function CartView() {
 
       {/* Empty Cart State */}
       {isHydrated && items.length === 0 && (
-        <div className="py-16 sm:py-24 px-6 text-center border border-brand-dark/[0.08] bg-[#FAF9F6]/70 backdrop-blur-xs rounded-xs space-y-5">
+        <div className="py-16 sm:py-24 px-6 text-center bg-white shadow-card rounded-tile space-y-5">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-brand-dark/[0.04] text-brand-dark/50">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -409,7 +409,7 @@ export default function CartView() {
           <div className="pt-2">
             <a
               href="/#catalogo"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] bg-brand-dark hover:opacity-85 transition-opacity rounded-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30"
+              className="inline-flex h-12 items-center justify-center gap-2 px-7 text-[15px] font-semibold text-brand-light bg-brand-dark hover:bg-ink-soft transition-colors rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30"
             >
               ← Explorar catálogo
             </a>
@@ -422,7 +422,7 @@ export default function CartView() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
           {/* Left Column: Items List */}
           <section
-            className="lg:col-span-7 xl:col-span-8 divide-y divide-brand-dark/[0.08] border-b border-brand-dark/[0.08]"
+            className="lg:col-span-7 xl:col-span-8 space-y-3"
             aria-label="Artículos en el carrito"
           >
             {items.map((item) => {
@@ -453,11 +453,11 @@ export default function CartView() {
               return (
                 <article
                   key={item.variantId}
-                  className={`py-6 first:pt-0 flex flex-row gap-4 sm:gap-6 items-start ${isUnavailable ? 'opacity-85' : ''
+                  className={`p-3 sm:p-4 bg-white shadow-hairline rounded-card flex flex-row gap-4 sm:gap-6 items-start ${isUnavailable ? 'opacity-85' : ''
                     }`}
                 >
                   {/* Product Thumbnail (4:5 ratio) */}
-                  <div className="w-24 sm:w-28 aspect-[4/5] shrink-0 overflow-hidden rounded-xs relative flex items-center justify-center">
+                  <div className="w-24 sm:w-28 aspect-[4/5] shrink-0 overflow-hidden rounded-ctl bg-sunken relative flex items-center justify-center">
                     {productUrl ? (
                       <a
                         href={productUrl}
@@ -498,7 +498,7 @@ export default function CartView() {
                             </h2>
                           )}
                           {isUnavailable && (
-                            <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-red-100 text-red-800 border border-red-200 rounded-xs">
+                            <span className="px-2.5 py-1 text-xs font-semibold bg-red-100 text-red-800 rounded-full">
                               No disponible
                             </span>
                           )}
@@ -531,7 +531,7 @@ export default function CartView() {
                       <button
                         type="button"
                         onClick={() => handleRemove(item.variantId)}
-                        className="text-xs font-medium text-brand-dark/55 hover:text-red-700 transition-colors p-1 -mr-1 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+                        className="inline-flex min-h-11 items-center px-2 -mr-2 text-[13px] font-medium text-ink-muted hover:text-red-700 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 rounded-full"
                         aria-label={`Eliminar ${item.title} talle ${formatProductSize(item.size, item)}`}
                         title="Eliminar artículo"
                       >
@@ -542,7 +542,7 @@ export default function CartView() {
                     {/* Availability / Insufficient Stock Alerts per Item */}
                     {isUnavailable && (
                       <div
-                        className="p-3 bg-red-50/90 border border-red-200 rounded-xs flex flex-wrap items-center justify-between gap-2 text-xs text-red-800"
+                        className="p-3 bg-red-50 rounded-card flex flex-wrap items-center justify-between gap-2 text-xs text-red-800"
                         role="alert"
                       >
                         <span>
@@ -562,7 +562,7 @@ export default function CartView() {
 
                     {isExceedingStock && (
                       <div
-                        className="p-3 bg-amber-50/90 border border-amber-200 rounded-xs flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900"
+                        className="p-3 bg-amber-50 rounded-card flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900"
                         role="alert"
                       >
                         <span>
@@ -590,7 +590,7 @@ export default function CartView() {
                     <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 pt-1">
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         <div
-                          className="inline-flex items-center border border-brand-dark/15 bg-white/80 rounded-xs"
+                          className="inline-flex items-center bg-sunken rounded-full p-0.5"
                           role="group"
                           aria-label={`Cantidad de ${item.title} talle ${formatProductSize(item.size, item)}`}
                         >
@@ -598,9 +598,9 @@ export default function CartView() {
                             type="button"
                             onClick={() => handleDecrement(item)}
                             disabled={item.quantity <= 1 || isUnavailable}
-                            className={`w-10 h-10 sm:w-8 sm:h-8 flex items-center justify-center text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark ${item.quantity <= 1 || isUnavailable
+                            className={`size-11 rounded-full flex items-center justify-center text-base font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark ${item.quantity <= 1 || isUnavailable
                                 ? 'text-brand-dark/25 cursor-not-allowed'
-                                : 'text-brand-dark hover:bg-brand-dark/[0.05] cursor-pointer'
+                                : 'text-brand-dark hover:bg-white cursor-pointer'
                               }`}
                             aria-label="Reducir cantidad"
                           >
@@ -618,9 +618,9 @@ export default function CartView() {
                             type="button"
                             onClick={() => handleIncrement(item)}
                             disabled={isUnavailable || quantityAtLimit}
-                            className={`w-10 h-10 sm:w-8 sm:h-8 flex items-center justify-center text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark ${isUnavailable || quantityAtLimit
+                            className={`size-11 rounded-full flex items-center justify-center text-base font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark ${isUnavailable || quantityAtLimit
                                 ? 'text-brand-dark/25 cursor-not-allowed'
-                                : 'text-brand-dark hover:bg-brand-dark/[0.05] cursor-pointer'
+                                : 'text-brand-dark hover:bg-white cursor-pointer'
                               }`}
                             aria-label="Incrementar cantidad"
                           >
@@ -631,7 +631,7 @@ export default function CartView() {
                         {!isUnavailable &&
                           !isExceedingStock &&
                           quantityAtLimit && (
-                            <span className="text-[11px] text-brand-dark/50">
+                            <span className="text-xs text-ink-muted">
                               {isAtMaxStock
                                 ? `Máx. disponible (${item.maxStock} u.)`
                                 : `Máx. por pedido (${MAX_CART_QTY_PER_ITEM} u.)`}
@@ -640,7 +640,7 @@ export default function CartView() {
                       </div>
 
                       <div className="text-right">
-                        <span className="block text-[10px] uppercase tracking-wider text-brand-dark/40">
+                        <span className="block text-xs uppercase tracking-wider text-ink-muted">
                           Subtotal
                         </span>
                         <span className="text-sm sm:text-base font-semibold tracking-tight text-brand-dark tabular-nums">
@@ -656,11 +656,11 @@ export default function CartView() {
 
           {/* Right Column: Summary & WhatsApp Inquiry CTA */}
           <aside
-            className="lg:col-span-5 xl:col-span-4 lg:sticky lg:top-24 bg-[#FAF9F6]/85 backdrop-blur-sm border border-brand-dark/[0.08] p-6 sm:p-7 rounded-xs space-y-6"
+            className="lg:col-span-5 xl:col-span-4 lg:sticky lg:top-24 bg-white shadow-card p-6 sm:p-7 rounded-tile space-y-6"
             aria-label="Resumen de la consulta"
           >
             <div className="border-b border-brand-dark/[0.08] pb-4">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-brand-dark">
+              <h2 className="text-headline text-brand-dark">
                 Resumen de consulta
               </h2>
             </div>
@@ -677,7 +677,7 @@ export default function CartView() {
               </div>
 
               <div className="border-t border-brand-dark/[0.08] pt-3 flex items-baseline justify-between">
-                <span className="text-sm font-semibold text-brand-dark uppercase tracking-wide">
+                <span className="text-[15px] font-semibold text-brand-dark">
                   Total estimado
                 </span>
                 <span className="text-lg sm:text-xl font-bold tracking-tight text-brand-dark tabular-nums">
@@ -685,7 +685,7 @@ export default function CartView() {
                 </span>
               </div>
 
-              <p className="text-[11px] text-brand-dark/50 leading-relaxed pt-1">
+              <p className="text-xs text-ink-muted leading-relaxed pt-1">
                 Los precios exhibidos son informativos. El monto definitivo y el
                 stock se validan al registrar tu consulta comercial.
               </p>
@@ -694,7 +694,7 @@ export default function CartView() {
             {/* Cart Stock / Availability Blocking Warning */}
             {!isValidCart && (
               <div
-                className="p-3.5 bg-amber-50/90 border border-amber-200 rounded-xs space-y-1 text-xs text-amber-900"
+                className="p-3.5 bg-amber-50 rounded-card space-y-1 text-xs text-amber-900"
                 role="alert"
               >
                 <p className="font-semibold">
@@ -711,7 +711,7 @@ export default function CartView() {
             {/* Inquiry Error Feedback (HTTP 409, 400, 404, etc.) */}
             {inquiryError && (
               <div
-                className="p-3.5 bg-red-50/90 border border-red-200 rounded-xs space-y-1.5 text-xs text-red-800"
+                className="p-3.5 bg-red-50 rounded-card space-y-1.5 text-xs text-red-800"
                 role="alert"
               >
                 <p className="font-semibold">
@@ -723,7 +723,7 @@ export default function CartView() {
                     ? inquiryError
                     : inquiryError.message}
                 </p>
-                <p className="text-[11px] text-red-700/80 pt-0.5">
+                <p className="text-xs text-red-700 pt-0.5">
                   Tu carrito fue conservado. Podés ajustar las cantidades o
                   eliminar artículos sin disponibilidad y volver a intentarlo.
                 </p>
@@ -735,10 +735,10 @@ export default function CartView() {
               <div className="space-y-1.5">
                 <label
                   htmlFor="inquiry-contact-name"
-                  className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/60"
+                  className="block text-[13px] font-semibold text-brand-dark"
                 >
                   Tu nombre{' '}
-                  <span className="font-normal text-brand-dark/40 lowercase">
+                  <span className="font-normal text-ink-muted">
                     (opcional)
                   </span>
                 </label>
@@ -750,7 +750,7 @@ export default function CartView() {
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
                   placeholder="Ej. Juan"
-                  className="form-input w-full h-10 px-3 text-base sm:text-sm"
+                  className="form-input w-full h-12 px-4 text-base sm:text-sm !rounded-full"
                 />
               </div>
 
@@ -762,12 +762,12 @@ export default function CartView() {
                   items.length === 0 ||
                   !isValidCart
                 }
-                className={`w-full min-h-[48px] px-5 flex items-center justify-center gap-2.5 rounded-xs text-xs sm:text-sm font-semibold uppercase tracking-wider transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark focus-visible:ring-offset-2 ${isSubmitting ||
+                className={`w-full min-h-12 px-5 flex items-center justify-center gap-2.5 rounded-full text-[15px] font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark focus-visible:ring-offset-2 ${isSubmitting ||
                     isCheckingStock ||
                     items.length === 0 ||
                     !isValidCart
-                    ? 'bg-brand-dark/35 text-[#FAFAFA]/80 cursor-not-allowed'
-                    : 'bg-brand-dark text-[#FAFAFA] hover:opacity-90 active:scale-[0.99] cursor-pointer'
+                    ? 'bg-sunken text-ink-muted cursor-not-allowed'
+                    : 'bg-brand-dark text-brand-sand shadow-float hover:bg-ink-soft active:scale-[0.98] cursor-pointer'
                   }`}
               >
                 {isSubmitting ? (
@@ -781,10 +781,10 @@ export default function CartView() {
               </button>
             </form>
 
-            <div className="pt-2 border-t border-brand-dark/[0.06] text-center">
+            <div className="pt-2 border-t border-hairline text-center">
               <a
                 href="/#catalogo"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-dark/60 hover:text-brand-dark transition-colors"
+                className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-ink-muted hover:text-brand-dark transition-colors"
               >
                 ← Seguir explorando el catálogo
               </a>

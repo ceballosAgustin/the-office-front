@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import AdminShell from './AdminShell';
 import InquiryStatusBadge from './InquiryStatusBadge';
+import Button from './ui/Button';
+import PageHeader from './ui/PageHeader';
+import EmptyState from './ui/EmptyState';
+import ErrorState from './ui/ErrorState';
+import ListSkeleton from './ui/ListSkeleton';
+import Icon from './ui/icons';
+import { formatRelativeTime } from './ui/time';
 import {
   fetchAdminInquirySummaryCounts,
   fetchAdminInquiries,
@@ -14,6 +21,12 @@ function getTotalItemsCount(inquiry) {
     (acc, item) => acc + (Number(item.quantity) || 0),
     0
   );
+}
+
+function getClientName(inquiry) {
+  return inquiry.contactName && inquiry.contactName.trim()
+    ? inquiry.contactName
+    : null;
 }
 
 export default function AdminDashboardView() {
@@ -54,231 +67,171 @@ export default function AdminDashboardView() {
   }, []);
 
   const kpiCards = [
-    {
-      status: 'NEW',
-      title: 'Consultas nuevas',
-      description: 'Pendientes de primer contacto',
-      value: counts?.NEW ?? 0,
-      accentClass: 'border-l-4 border-l-amber-600',
-    },
+    { status: 'NEW', title: 'Nuevas', value: counts?.NEW ?? 0, dot: null },
     {
       status: 'IN_PROGRESS',
       title: 'En seguimiento',
-      description: 'Conversación activa por WhatsApp',
       value: counts?.IN_PROGRESS ?? 0,
-      accentClass: 'border-l-4 border-l-sky-600',
+      dot: 'bg-sky-600',
     },
     {
       status: 'CONVERTED',
-      title: 'Consultas convertidas',
-      description: 'Confirmadas y transformadas en pedido',
+      title: 'Convertidas',
       value: counts?.CONVERTED ?? 0,
-      accentClass: 'border-l-4 border-l-emerald-600',
+      dot: 'bg-emerald-600',
     },
     {
       status: 'NOT_CONVERTED',
       title: 'No concretadas',
-      description: 'Cerradas sin conversión',
       value: counts?.NOT_CONVERTED ?? 0,
-      accentClass: 'border-l-4 border-l-brand-dark/30',
+      dot: 'bg-brand-dark/35',
     },
   ];
 
   return (
     <AdminShell activeSection="dashboard">
-      <div className="space-y-8">
-        {/* Page Header */}
-        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-brand-dark/[0.08] pb-4">
-          <div className="space-y-1">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/45">
-              Resumen Operativo
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-brand-dark">
-              Dashboard de Consultas
-            </h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
-            <button
-              type="button"
-              onClick={loadDashboard}
-              disabled={isLoading}
-              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/15 hover:border-brand-dark rounded-xs transition-colors cursor-pointer"
-            >
-              Actualizar
-            </button>
-            <a
-              href="/admin/orders"
-              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/20 hover:border-brand-dark rounded-xs transition-colors"
-            >
-              Orders
-            </a>
-            <a
-              href="/admin/products"
-              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/20 hover:border-brand-dark rounded-xs transition-colors"
-            >
-              Products
-            </a>
-            <a
-              href="/admin/categories"
-              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/20 hover:border-brand-dark rounded-xs transition-colors"
-            >
-              Categories
-            </a>
-            <a
-              href="/admin/inquiries"
-              className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] bg-brand-dark hover:opacity-90 rounded-xs transition-opacity"
-            >
-              Ver todas las consultas →
-            </a>
-          </div>
-        </div>
+      <div className="space-y-6">
+        <PageHeader
+          title="Inicio"
+          subtitle="Lo que necesita tu atención hoy."
+          actions={
+            <Button href="/admin/products/new" size="sm" className="lg:min-h-10">
+              <span className="whitespace-nowrap">
+                + Nuevo<span className="hidden sm:inline"> producto</span>
+              </span>
+            </Button>
+          }
+        />
 
-        {/* Error Banner */}
         {errorMessage && (
-          <div
-            className="p-4 bg-red-50/90 border border-red-200 rounded-xs text-xs text-red-800 flex flex-wrap items-center justify-between gap-3"
-            role="alert"
-          >
-            <div>
-              <p className="font-semibold">Error al cargar el dashboard</p>
-              <p>{errorMessage}</p>
-            </div>
-            <button
-              type="button"
-              onClick={loadDashboard}
-              className="px-3 py-1.5 font-semibold uppercase tracking-wider bg-red-800 text-white rounded-xs cursor-pointer"
-            >
-              Reintentar
-            </button>
-          </div>
+          <ErrorState
+            title="No pudimos cargar el resumen"
+            message={errorMessage}
+            onRetry={loadDashboard}
+          />
         )}
 
-        {/* KPI Cards Grid */}
-        <section aria-label="Indicadores por estado">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* KPIs: 2x2 en celu, 4x1 en lg */}
+        <section aria-label="Consultas por estado">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {kpiCards.map((card) => (
               <a
                 key={card.status}
                 href={`/admin/inquiries?status=${card.status}`}
-                className={`block bg-[#FAF9F6]/90 backdrop-blur-xs border border-brand-dark/10 p-5 rounded-xs hover:border-brand-dark/35 transition-colors ${card.accentClass}`}
+                className="group block rounded-card bg-white p-4 shadow-hairline transition-shadow hover:shadow-card"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-brand-dark/70">
-                    {card.title}
-                  </span>
-                  <InquiryStatusBadge status={card.status} />
+                <div className="flex min-h-6 items-center justify-between gap-2">
+                  <span className="text-[13px] text-ink-muted">{card.title}</span>
+                  {card.status === 'NEW' ? (
+                    !isLoading &&
+                    card.value > 0 && (
+                      <span className="rounded-full bg-brand-sand px-2 py-0.5 text-xs font-semibold text-brand-dark">
+                        Atender
+                      </span>
+                    )
+                  ) : (
+                    <span
+                      className={`size-2 shrink-0 rounded-full ${card.dot}`}
+                      aria-hidden="true"
+                    />
+                  )}
                 </div>
-                <div className="mt-4 flex items-baseline justify-between">
-                  <span className="text-3xl sm:text-4xl font-bold tracking-tight text-brand-dark tabular-nums">
-                    {isLoading ? '—' : card.value}
-                  </span>
-                  <span className="text-[11px] font-medium text-brand-dark/45">
-                    Filtrar →
-                  </span>
-                </div>
-                <p className="mt-1.5 text-[11px] text-brand-dark/50">
-                  {card.description}
+                <p className="mt-2 text-[1.75rem] font-semibold leading-none tabular-nums text-brand-dark">
+                  {isLoading ? '—' : card.value}
                 </p>
               </a>
             ))}
           </div>
         </section>
 
-        {/* Recent Inquiries Section */}
-        <section className="space-y-4" aria-label="Consultas más recientes">
+        {/* Consultas recientes */}
+        <section aria-labelledby="recent-inquiries-title">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm sm:text-base font-bold uppercase tracking-wider text-brand-dark">
-              Consultas Recientes
+            <h2
+              id="recent-inquiries-title"
+              className="text-base font-semibold text-brand-dark"
+            >
+              Consultas recientes
             </h2>
             <a
               href="/admin/inquiries"
-              className="text-xs font-semibold text-brand-dark/65 hover:text-brand-dark underline underline-offset-4"
+              className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-dark underline-offset-4 hover:underline"
             >
-              Ir al listado completo
+              Ver todas
             </a>
           </div>
 
           {isLoading ? (
-            <div className="space-y-2 animate-pulse">
-              {Array.from({ length: 4 }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className="h-14 w-full bg-[#F2F2F0] rounded-xs"
-                />
-              ))}
-            </div>
+            <ListSkeleton rows={4} className="mt-1" />
           ) : recentInquiries.length === 0 ? (
-            <div className="py-12 px-6 text-center bg-[#FAF9F6]/80 border border-brand-dark/10 rounded-xs space-y-2">
-              <p className="text-sm font-medium text-brand-dark/70">
-                Todavía no hay consultas comerciales registradas.
-              </p>
-              <p className="text-xs text-brand-dark/50">
-                Las consultas enviadas por los clientes desde el carrito
-                aparecerán aquí automáticamente.
-              </p>
-            </div>
+            <EmptyState
+              className="mt-1"
+              icon="chat"
+              title="Todavía no hay consultas"
+              description="Las consultas que los clientes envían desde el carrito aparecen acá automáticamente."
+            />
           ) : (
-            <div className="bg-[#FAF9F6]/90 backdrop-blur-xs border border-brand-dark/10 rounded-xs overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+            <>
+              {/* Tabla (md+): toda la fila es clickeable vía link real en la primera celda */}
+              <div className="mt-1 hidden overflow-hidden rounded-card bg-white shadow-hairline md:block">
+                <table className="w-full border-collapse text-left text-sm">
                   <thead>
-                    <tr className="border-b border-brand-dark/10 bg-brand-dark/[0.03] text-[11px] font-semibold uppercase tracking-wider text-brand-dark/55">
-                      <th className="py-3 px-4">Consulta</th>
-                      <th className="py-3 px-4">Fecha</th>
-                      <th className="py-3 px-4">Cliente</th>
-                      <th className="py-3 px-4 text-center">Artículos</th>
-                      <th className="py-3 px-4 text-right">Total ref.</th>
-                      <th className="py-3 px-4">Estado</th>
-                      <th className="py-3 px-4 text-right">Acción</th>
+                    <tr className="border-b border-brand-dark/[0.06] text-[13px] text-ink-muted">
+                      <th scope="col" className="px-4 py-3 font-medium">
+                        Cliente
+                      </th>
+                      <th scope="col" className="px-4 py-3 text-center font-medium">
+                        Artículos
+                      </th>
+                      <th scope="col" className="px-4 py-3 text-right font-medium">
+                        Total ref.
+                      </th>
+                      <th scope="col" className="px-4 py-3 font-medium">
+                        Estado
+                      </th>
+                      <th scope="col" className="w-10 px-2 py-3">
+                        <span className="sr-only">Abrir</span>
+                      </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-brand-dark/[0.06] text-xs sm:text-sm">
+                  <tbody className="divide-y divide-brand-dark/[0.06]">
                     {recentInquiries.map((inq) => {
                       const itemsCount = getTotalItemsCount(inq);
+                      const name = getClientName(inq);
                       return (
                         <tr
                           key={inq.id}
-                          className="hover:bg-brand-dark/[0.02] transition-colors"
+                          className="relative transition-colors hover:bg-sunken/70"
                         >
-                          <td className="py-3.5 px-4 font-mono font-semibold text-brand-dark whitespace-nowrap">
+                          <td className="px-4 py-3">
                             <a
                               href={`/admin/inquiries/${inq.id}`}
-                              className="hover:underline underline-offset-2"
+                              className="font-medium text-brand-dark after:absolute after:inset-0"
                             >
-                              {inq.inquiryNumber}
+                              {name || (
+                                <span className="font-normal italic text-ink-muted">
+                                  Sin nombre
+                                </span>
+                              )}
                             </a>
-                          </td>
-                          <td className="py-3.5 px-4 text-xs text-brand-dark/65 whitespace-nowrap tabular-nums">
-                            {formatArgentinaDateTime(inq.createdAt)}
-                          </td>
-                          <td className="py-3.5 px-4 text-brand-dark">
-                            {inq.contactName && inq.contactName.trim() ? (
-                              <span className="font-medium">
-                                {inq.contactName}
+                            <p className="mt-0.5 text-[13px] text-ink-muted">
+                              {inq.inquiryNumber} ·{' '}
+                              <span title={formatArgentinaDateTime(inq.createdAt)}>
+                                {formatRelativeTime(inq.createdAt)}
                               </span>
-                            ) : (
-                              <span className="text-brand-dark/40 italic text-xs">
-                                No especificado
-                              </span>
-                            )}
+                            </p>
                           </td>
-                          <td className="py-3.5 px-4 text-center tabular-nums text-brand-dark/75">
-                            {itemsCount} {itemsCount === 1 ? 'u.' : 'u.'}
+                          <td className="px-4 py-3 text-center tabular-nums text-brand-dark">
+                            {itemsCount}
                           </td>
-                          <td className="py-3.5 px-4 text-right font-semibold text-brand-dark tabular-nums whitespace-nowrap">
+                          <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-brand-dark">
                             {formatPrice(Number(inq.totalAmount) || 0)}
                           </td>
-                          <td className="py-3.5 px-4 whitespace-nowrap">
+                          <td className="px-4 py-3">
                             <InquiryStatusBadge status={inq.status} />
                           </td>
-                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                            <a
-                              href={`/admin/inquiries/${inq.id}`}
-                              className="inline-flex items-center gap-1 text-xs font-semibold text-brand-dark hover:opacity-70"
-                            >
-                              <span>Gestionar</span>
-                              <span aria-hidden="true">→</span>
-                            </a>
+                          <td className="px-2 py-3 text-ink-muted">
+                            <Icon name="chevronRight" size={18} />
                           </td>
                         </tr>
                       );
@@ -286,11 +239,46 @@ export default function AdminDashboardView() {
                   </tbody>
                 </table>
               </div>
-            </div>
+
+              {/* Cards (< md) */}
+              <ul className="mt-1 space-y-2.5 md:hidden">
+                {recentInquiries.map((inq) => {
+                  const itemsCount = getTotalItemsCount(inq);
+                  const name = getClientName(inq);
+                  return (
+                    <li
+                      key={inq.id}
+                      className="relative rounded-card bg-white p-3.5 shadow-hairline transition-shadow active:shadow-card"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <a
+                          href={`/admin/inquiries/${inq.id}`}
+                          className="min-w-0 truncate text-[15px] font-semibold text-brand-dark after:absolute after:inset-0 after:rounded-card"
+                        >
+                          {name || 'Sin nombre'}
+                        </a>
+                        <InquiryStatusBadge status={inq.status} />
+                      </div>
+                      <div className="mt-1.5 flex items-center justify-between gap-2 text-[13px] text-ink-muted">
+                        <span className="tabular-nums">
+                          {itemsCount} {itemsCount === 1 ? 'artículo' : 'artículos'} ·{' '}
+                          {formatPrice(Number(inq.totalAmount) || 0)}
+                        </span>
+                        <span
+                          className="shrink-0"
+                          title={formatArgentinaDateTime(inq.createdAt)}
+                        >
+                          {formatRelativeTime(inq.createdAt)}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </section>
       </div>
     </AdminShell>
   );
 }
-

@@ -1,10 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AdminShell from './AdminShell';
-import SweetAlertModal from './SweetAlertModal';
+import Button from './ui/Button';
+import PageHeader from './ui/PageHeader';
+import Segmented from './ui/Segmented';
+import StatusBadge from './ui/StatusBadge';
+import Menu from './ui/Menu';
+import EmptyState from './ui/EmptyState';
+import ErrorState from './ui/ErrorState';
+import ListSkeleton from './ui/ListSkeleton';
+import Pagination from './ui/Pagination';
+import Icon from './ui/icons';
+import { toast } from './ui/Toast';
+import { inputClass, selectClass } from './ui/Field';
 import {
   fetchAdminProducts,
   updateAdminProductStatus,
-  deleteAdminProduct,
   fetchCategories,
   formatPrice,
   getOptimizedImageUrl,
@@ -41,19 +51,36 @@ function calculateActiveStock(product) {
   return Math.max(0, Number(product?.baseStock) || 0);
 }
 
-function getActiveSizesSummary(product) {
-  if (!Array.isArray(product?.variants) || product.variants.length === 0) {
-    return 'Sin variantes';
+function ProductThumb({ product, className }) {
+  const primaryImg = resolvePrimaryImage(product);
+  return (
+    <span
+      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-ctl bg-sunken ${className}`}
+    >
+      <img
+        src={getOptimizedImageUrl(primaryImg, 'thumbnail')}
+        alt=""
+        loading="lazy"
+        onError={(e) => {
+          e.currentTarget.onerror = null;
+          e.currentTarget.src = PLACEHOLDER_IMAGE;
+        }}
+        className="h-full w-full object-contain object-center"
+      />
+    </span>
+  );
+}
+
+function StockLabel({ stock }) {
+  if (stock > 0) {
+    return <span className="tabular-nums">{stock}</span>;
   }
-  const active = product.variants.filter((v) => v && v.isActive !== false);
-  const inactiveCount = product.variants.length - active.length;
-  if (active.length === 0) {
-    return `0 activas (${inactiveCount} inact.)`;
-  }
-  const sizesText = active.map((v) => v.size).join(', ');
-  return inactiveCount > 0
-    ? `${sizesText} (+${inactiveCount} inact.)`
-    : sizesText;
+  return (
+    <span className="inline-flex items-center gap-1.5 tabular-nums">
+      <span className="size-2 shrink-0 rounded-full bg-red-600" aria-hidden="true" />
+      Sin stock
+    </span>
+  );
 }
 
 export default function AdminProductsListView() {
@@ -74,29 +101,16 @@ export default function AdminProductsListView() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
-  const [actionMessage, setActionMessage] = useState(null);
-  const [actionError, setActionError] = useState(null);
-
-  // Deactivation confirmation modal state
-  const [productToDeactivate, setProductToDeactivate] = useState(null);
   const [togglingProductId, setTogglingProductId] = useState(null);
-
-  // SweetAlert Floating Notification State
-  const [sweetAlert, setSweetAlert] = useState(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('deleted') === '1') {
-        setSweetAlert({
-          isOpen: true,
-          type: 'success',
-          title: '¡Producto desactivado!',
-          message: 'El producto fue desactivado y quedó oculto del catálogo.',
-          autoCloseMs: 3000,
-          onConfirm: () => setSweetAlert(null),
+      if (params.get('created') === '1') {
+        toast.success('El producto se creó y ya está en el catálogo.', {
+          title: 'Producto creado',
         });
-        params.delete('deleted');
+        params.delete('created');
         const cleanUrl = `${window.location.pathname}${
           params.toString() ? `?${params.toString()}` : ''
         }`;
@@ -190,22 +204,10 @@ export default function AdminProductsListView() {
     setPage(0);
   };
 
-  const handleToggleStatusClick = (product) => {
-    setActionMessage(null);
-    setActionError(null);
-    const currentlyActive = product.isActive !== false;
-    if (currentlyActive) {
-      setProductToDeactivate(product);
-    } else {
-      executeStatusChange(product, true);
-    }
-  };
-
+  // La confirmación de "Desactivar" es en línea (dentro del menú de la fila); "Activar" no necesita confirmación.
   const executeStatusChange = async (product, nextActiveState) => {
     if (!product || togglingProductId != null) return;
     setTogglingProductId(product.id);
-    setActionMessage(null);
-    setActionError(null);
 
     try {
       const updated = await updateAdminProductStatus(
@@ -218,61 +220,49 @@ export default function AdminProductsListView() {
           item.id === updated.id ? updated : item
         ),
       }));
-      setProductToDeactivate(null);
-      setActionMessage(
-        `El producto "${updated.title}" fue ${
-          updated.isActive !== false ? 'activado' : 'desactivado'
-        } correctamente.`
+      toast.success(
+        `"${updated.title}" quedó ${
+          updated.isActive !== false ? 'activo' : 'desactivado'
+        }.`
       );
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      setActionError(
+      toast.error(
         err?.message || 'No se pudo actualizar el estado del producto.'
       );
-      setProductToDeactivate(null);
     } finally {
       setTogglingProductId(null);
     }
   };
 
-  const handleDeleteProductClick = (product) => {
-    setSweetAlert({
-      isOpen: true,
-      type: 'confirm',
-      title: '¿Desactivar producto?',
-      message: `El producto #${product.id} ("${product.title || 'Sin título'}") se va a desactivar y quedará oculto del catálogo. No se borra de la base de datos.`,
-      confirmText: 'Sí, desactivar',
-      cancelText: 'Cancelar',
-      onCancel: () => setSweetAlert(null),
-      onConfirm: async () => {
-        try {
-          await deleteAdminProduct(product.id);
-          setSweetAlert({
-            isOpen: true,
-            type: 'success',
-            title: '¡Producto desactivado!',
-            message: `El producto #${product.id} se desactivó y quedó oculto del catálogo.`,
-            autoCloseMs: 2500,
-            onConfirm: () => {
-              setSweetAlert(null);
-              loadProducts(statusFilter, categoryFilter, appliedSearch, page);
+  const getMenuItems = (prod) => {
+    const isActive = prod.isActive !== false;
+    const isToggling = togglingProductId === prod.id;
+    return [
+      { key: 'edit', label: 'Editar', href: `/admin/products/${prod.id}/edit` },
+      isActive
+        ? {
+            key: 'deactivate',
+            label: 'Desactivar…',
+            danger: true,
+            disabled: isToggling,
+            confirm: {
+              message:
+                'Se oculta de la tienda. Conserva historial, variantes y fotos, y lo podés reactivar.',
+              confirmLabel: 'Desactivar',
             },
-          });
-          loadProducts(statusFilter, categoryFilter, appliedSearch, page);
-        } catch (err) {
-          setSweetAlert({
-            isOpen: true,
-            type: 'error',
-            title: 'No se pudo desactivar',
-            message: err?.message || 'Ocurrió un error al intentar desactivar el producto.',
-            onConfirm: () => setSweetAlert(null),
-          });
-        }
-      },
-    });
+            onSelect: () => executeStatusChange(prod, false),
+          }
+        : {
+            key: 'activate',
+            label: 'Activar',
+            disabled: isToggling,
+            onSelect: () => executeStatusChange(prod, true),
+          },
+    ];
   };
 
   const products = pageData.content;
@@ -281,617 +271,288 @@ export default function AdminProductsListView() {
 
   return (
     <AdminShell activeSection="products">
-      <div className="space-y-6">
-        {/* Page Header */}
-        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-brand-dark/[0.08] pb-4">
-          <div className="space-y-1">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/45">
-              Catálogo e Inventario
-            </span>
-            <div className="flex items-baseline gap-3">
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-brand-dark">
-                Products Management
-              </h1>
-              <span className="text-xs font-mono text-brand-dark/45">
-                [{isLoading ? '--' : pageData.totalElements}]
+      <div className="space-y-4">
+        <PageHeader
+          title="Productos"
+          subtitle={
+            isLoading
+              ? 'Cargando…'
+              : errorMessage
+                ? ''
+                : `${pageData.totalElements} ${
+                  pageData.totalElements === 1 ? 'producto' : 'productos'
+                }`
+          }
+          actions={
+            <Button href="/admin/products/new" size="sm" className="lg:min-h-10">
+              <span className="whitespace-nowrap">
+                + Nuevo<span className="hidden sm:inline"> producto</span>
               </span>
-            </div>
-          </div>
+            </Button>
+          }
+        />
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() =>
-                loadProducts(statusFilter, categoryFilter, appliedSearch, page)
-              }
-              disabled={isLoading}
-              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/15 hover:border-brand-dark rounded-xs transition-colors cursor-pointer"
-            >
-              Actualizar
-            </button>
-            <a
-              href="/admin/categories"
-              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/20 hover:border-brand-dark rounded-xs transition-colors"
-            >
-              Categorías
-            </a>
-            <a
-              href="/admin/products/new"
-              className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] bg-brand-dark hover:opacity-90 rounded-xs transition-opacity"
-            >
-              + Nuevo producto
-            </a>
-          </div>
-        </div>
+        {/* Filtros */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <Segmented
+            ariaLabel="Filtrar productos por estado"
+            options={STATUS_TABS}
+            value={statusFilter}
+            onChange={(next) => {
+              setStatusFilter(next);
+              setPage(0);
+            }}
+            fullWidth
+            className="lg:w-auto"
+          />
 
-        {/* Filters & Search Toolbar */}
-        <div className="bg-[#FAF9F6]/90 border border-brand-dark/10 p-4 rounded-xs space-y-4">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            {/* Status Filter Tabs */}
-            <div
-              className="flex flex-wrap items-center gap-1.5"
-              role="tablist"
-              aria-label="Filtrar productos por estado"
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <select
+              aria-label="Filtrar por categoría"
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setPage(0);
+              }}
+              className={`${selectClass} sm:w-52`}
             >
-              {STATUS_TABS.map((tab) => {
-                const isSelected = statusFilter === tab.value;
-                return (
-                  <button
-                    key={tab.value}
-                    type="button"
-                    role="tab"
-                    aria-selected={isSelected}
-                    onClick={() => {
-                      setStatusFilter(tab.value);
+              <option value="">Todas las categorías</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={String(cat.id)}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+
+            <form onSubmit={handleSearchSubmit} role="search" className="sm:w-64">
+              <div className="relative">
+                <Icon
+                  name="search"
+                  size={16}
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted"
+                />
+                <input
+                  type="search"
+                  enterKeyHint="search"
+                  value={searchInput}
+                  onChange={(e) => {
+                    setSearchInput(e.target.value);
+                    if (!e.target.value.trim() && appliedSearch) {
+                      setAppliedSearch('');
                       setPage(0);
-                    }}
-                    className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-xs border transition-colors cursor-pointer ${
-                      isSelected
-                        ? 'bg-brand-dark text-[#FAFAFA] border-brand-dark'
-                        : 'bg-white text-brand-dark/70 border-brand-dark/15 hover:border-brand-dark hover:text-brand-dark'
-                    }`}
+                    }
+                  }}
+                  placeholder="Buscar por nombre"
+                  aria-label="Buscar producto por nombre"
+                  className={`${inputClass} pl-10 ${searchInput ? 'pr-11' : 'pr-3.5'} [&::-webkit-search-cancel-button]:hidden`}
+                />
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearchInput}
+                    className="absolute right-0 top-0 grid h-11 w-11 place-items-center rounded-r-ctl text-ink-muted hover:text-brand-dark lg:h-10"
+                    aria-label="Limpiar búsqueda"
                   >
-                    {tab.label}
+                    <Icon name="x" size={16} />
                   </button>
-                );
-              })}
-            </div>
+                )}
+              </div>
+            </form>
 
-            {/* Category Select & Search Form */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-              <select
-                aria-label="Filtrar por categoría"
-                value={categoryFilter}
-                onChange={(e) => {
-                  setCategoryFilter(e.target.value);
-                  setPage(0);
-                }}
-                className="form-select h-9 pl-3 pr-9 text-base sm:text-xs font-medium"
-              >
-                <option value="">Todas las categorías</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={String(cat.id)}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
-
-              <form
-                onSubmit={handleSearchSubmit}
-                className="flex items-center gap-1.5 w-full sm:w-auto"
-              >
-                <div className="relative flex-1 sm:w-56">
-                  <input
-                    type="search"
-                    value={searchInput}
-                    onChange={(e) => {
-                      setSearchInput(e.target.value);
-                      if (!e.target.value.trim() && appliedSearch) {
-                        setAppliedSearch('');
-                        setPage(0);
-                      }
-                    }}
-                    placeholder="Buscar por nombre..."
-                    aria-label="Buscar producto por nombre"
-                    className="form-input w-full h-9 pl-3 pr-8 text-base sm:text-xs [&::-webkit-search-cancel-button]:hidden"
-                  />
-                  {searchInput && (
-                    <button
-                      type="button"
-                      onClick={handleClearSearchInput}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-brand-dark/45 hover:text-brand-dark cursor-pointer"
-                      aria-label="Limpiar búsqueda"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-                <button
-                  type="submit"
-                  className="h-9 px-3 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs hover:opacity-90 transition-opacity cursor-pointer shrink-0"
-                >
-                  Buscar
-                </button>
-              </form>
-
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={handleClearFilters}
-                  className="h-9 px-2.5 text-xs font-medium text-brand-dark/65 hover:text-brand-dark underline underline-offset-4 cursor-pointer"
-                >
-                  Limpiar
-                </button>
-              )}
-            </div>
+            {hasActiveFilters && (
+              <Button variant="ghost" onClick={handleClearFilters}>
+                Limpiar filtros
+              </Button>
+            )}
           </div>
         </div>
 
-        {/* Action Feedback Banners */}
-        {actionMessage && (
-          <div
-            className="p-3.5 bg-emerald-50/95 border border-emerald-200 rounded-xs text-xs text-emerald-900 flex items-center justify-between gap-3"
-            role="status"
-          >
-            <span className="font-medium">{actionMessage}</span>
-            <button
-              type="button"
-              onClick={() => setActionMessage(null)}
-              className="text-emerald-800 hover:opacity-70 font-bold cursor-pointer"
-              aria-label="Cerrar aviso"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {actionError && (
-          <div
-            className="p-3.5 bg-red-50/95 border border-red-200 rounded-xs text-xs text-red-800 flex items-center justify-between gap-3"
-            role="alert"
-          >
-            <span className="font-medium">{actionError}</span>
-            <button
-              type="button"
-              onClick={() => setActionError(null)}
-              className="text-red-800 hover:opacity-70 font-bold cursor-pointer"
-              aria-label="Cerrar error"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Load Error State */}
         {errorMessage && (
-          <div
-            className="p-4 bg-red-50/90 border border-red-200 rounded-xs text-xs text-red-800 flex flex-wrap items-center justify-between gap-3"
-            role="alert"
-          >
-            <div>
-              <p className="font-semibold">Error al obtener los productos</p>
-              <p>{errorMessage}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                loadProducts(statusFilter, categoryFilter, appliedSearch, page)
-              }
-              className="px-3 py-1.5 font-semibold uppercase tracking-wider bg-red-800 text-white rounded-xs cursor-pointer"
-            >
-              Reintentar
-            </button>
-          </div>
+          <ErrorState
+            title="No pudimos cargar los productos"
+            message={errorMessage}
+            onRetry={() =>
+              loadProducts(statusFilter, categoryFilter, appliedSearch, page)
+            }
+          />
         )}
 
-        {/* Loading State */}
-        {isLoading && (
-          <div className="space-y-2.5 animate-pulse">
-            {Array.from({ length: 6 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="h-16 w-full bg-[#F2F2F0] rounded-xs"
-              />
-            ))}
-          </div>
-        )}
+        {isLoading && <ListSkeleton rows={6} rowClassName="h-[72px]" />}
 
-        {/* Empty State */}
         {!isLoading && !errorMessage && products.length === 0 && (
-          <div className="py-16 px-6 text-center bg-[#FAF9F6]/85 border border-brand-dark/10 rounded-xs space-y-3">
-            <p className="text-sm sm:text-base font-semibold text-brand-dark">
-              No se encontraron productos
-            </p>
-            <p className="text-xs text-brand-dark/60 max-w-md mx-auto">
-              {hasActiveFilters
-                ? 'No hay productos que coincidan con los filtros o la búsqueda aplicada.'
-                : 'Aún no hay productos registrados en el catálogo.'}
-            </p>
-            <div className="pt-1 flex items-center justify-center gap-4">
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={handleClearFilters}
-                  className="text-xs font-semibold text-brand-dark underline underline-offset-4 hover:opacity-70 cursor-pointer"
-                >
-                  Restablecer filtros
-                </button>
-              )}
-              <a
-                href="/admin/products/new"
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs"
-              >
-                + Crear producto
-              </a>
-            </div>
-          </div>
+          <EmptyState
+            icon="tag"
+            title="No hay productos para mostrar"
+            description={
+              hasActiveFilters
+                ? 'Ningún producto coincide con los filtros o la búsqueda.'
+                : 'Todavía no cargaste productos en el catálogo.'
+            }
+            action={
+              <>
+                {hasActiveFilters && (
+                  <Button variant="secondary" onClick={handleClearFilters}>
+                    Restablecer filtros
+                  </Button>
+                )}
+                <Button href="/admin/products/new">+ Crear producto</Button>
+              </>
+            }
+          />
         )}
 
-        {/* Products Table (Desktop) & Cards (Mobile) */}
         {!isLoading && !errorMessage && products.length > 0 && (
           <>
-            {/* Desktop Table */}
-            <div className="hidden md:block bg-[#FAF9F6]/90 backdrop-blur-xs border border-brand-dark/10 rounded-xs overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-brand-dark/10 bg-brand-dark/[0.03] text-[11px] font-semibold uppercase tracking-wider text-brand-dark/55">
-                      <th className="py-3.5 px-4">Producto</th>
-                      <th className="py-3.5 px-4">Categoría</th>
-                      <th className="py-3.5 px-4 text-right">Precio</th>
-                      <th className="py-3.5 px-4 text-center">Stock activo</th>
-                      <th className="py-3.5 px-4">Estado</th>
-                      <th className="py-3.5 px-4 text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-brand-dark/[0.06] text-xs sm:text-sm">
-                    {products.map((prod) => {
-                      const isActive = prod.isActive !== false;
-                      const activeStock = calculateActiveStock(prod);
-                      const primaryImg = resolvePrimaryImage(prod);
-                      const sizesSummary = getActiveSizesSummary(prod);
-                      const isToggling = togglingProductId === prod.id;
-
-                      return (
-                        <tr
-                          key={prod.id}
-                          className={`transition-colors hover:bg-brand-dark/[0.02] ${
-                            !isActive ? 'opacity-70 bg-brand-dark/[0.015]' : ''
-                          }`}
-                        >
-                          <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-3.5">
-                              <a
-                                href={`/admin/products/${prod.id}/edit`}
-                                className="w-12 h-15 shrink-0 rounded-xs overflow-hidden border border-brand-dark/10 flex items-center justify-center p-0.5 block"
-                              >
-                                <img
-                                  src={getOptimizedImageUrl(primaryImg, 'thumbnail')}
-                                  alt={prod.title || 'Producto'}
-                                  onError={(e) => {
-                                    e.currentTarget.onerror = null;
-                                    e.currentTarget.src = PLACEHOLDER_IMAGE;
-                                  }}
-                                  className="w-full h-full object-contain object-center"
-                                />
-                              </a>
-                              <div className="min-w-0 space-y-0.5">
-                                <div className="flex items-center gap-2">
-                                  <a
-                                    href={`/admin/products/${prod.id}/edit`}
-                                    className="font-semibold text-brand-dark hover:underline underline-offset-2 truncate"
-                                  >
-                                    {prod.title || 'Sin título'}
-                                  </a>
-                                  <span className="font-mono text-[11px] text-brand-dark/40">
-                                    #{prod.id}
-                                  </span>
-                                </div>
-                                <p className="text-[11px] text-brand-dark/55 truncate">
-                                  Talles: {sizesSummary}
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="py-3.5 px-4 whitespace-nowrap">
-                            {prod.categoryName ? (
-                              <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-brand-dark/[0.05] text-brand-dark rounded-xs">
-                                {prod.categoryName}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 text-[11px] font-medium bg-amber-50 text-amber-900 border border-amber-200 rounded-xs">
-                                Sin categoría asignada
-                              </span>
-                            )}
-                          </td>
-
-                          <td className="py-3.5 px-4 text-right font-semibold text-brand-dark tabular-nums whitespace-nowrap">
-                            {formatPrice(Number(prod.price) || 0)}
-                          </td>
-
-                          <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 text-xs font-mono font-semibold rounded-xs ${
-                                activeStock > 0
-                                  ? 'bg-brand-dark/[0.06] text-brand-dark'
-                                  : 'bg-red-50 text-red-800 border border-red-200'
-                              }`}
-                            >
-                              {activeStock} u.
-                            </span>
-                          </td>
-
-                          <td className="py-3.5 px-4 whitespace-nowrap">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider border rounded-xs ${
-                                isActive
-                                  ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                                  : 'bg-brand-dark/[0.05] text-brand-dark/60 border-brand-dark/15'
-                              }`}
-                            >
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  isActive
-                                    ? 'bg-emerald-600'
-                                    : 'bg-brand-dark/35'
-                                }`}
-                              />
-                              <span>{isActive ? 'Activo' : 'Inactivo'}</span>
-                            </span>
-                          </td>
-
-                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                            <div className="inline-flex items-center justify-end gap-2">
-                              <a
-                                href={`/admin/products/${prod.id}/edit`}
-                                className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] hover:opacity-90 rounded-xs transition-opacity"
-                              >
-                                Editar
-                              </a>
-                              <button
-                                type="button"
-                                disabled={isToggling}
-                                onClick={() => handleToggleStatusClick(prod)}
-                                className={`px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wider border rounded-xs transition-colors cursor-pointer ${
-                                  isActive
-                                    ? 'border-red-200 text-red-800 bg-white hover:bg-red-50'
-                                    : 'border-emerald-300 text-emerald-900 bg-emerald-50 hover:bg-emerald-100'
-                                }`}
-                              >
-                                {isToggling
-                                  ? '...'
-                                  : isActive
-                                  ? 'Desactivar'
-                                  : 'Activar'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteProductClick(prod)}
-                                title="Eliminar producto"
-                                className="px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-rose-700 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200 rounded-xs transition-colors cursor-pointer"
-                              >
-                                Eliminar
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Mobile Cards */}
-            <div className="md:hidden space-y-3">
-              {products.map((prod) => {
-                const isActive = prod.isActive !== false;
-                const activeStock = calculateActiveStock(prod);
-                const primaryImg = resolvePrimaryImage(prod);
-                const sizesSummary = getActiveSizesSummary(prod);
-                const isToggling = togglingProductId === prod.id;
-
-                return (
-                  <div
-                    key={prod.id}
-                    className={`bg-[#FAF9F6]/90 border border-brand-dark/12 p-4 rounded-xs space-y-3 ${
-                      !isActive ? 'opacity-75' : ''
-                    }`}
-                  >
-                    <div className="flex items-start gap-3.5">
-                      <a
-                        href={`/admin/products/${prod.id}/edit`}
-                        className="w-16 aspect-[4/5] shrink-0 rounded-xs overflow-hidden border border-brand-dark/10 flex items-center justify-center p-0.5"
+            {/* Tabla (md+): fila clickeable (link real en el nombre) */}
+            <div className="hidden rounded-card bg-white shadow-hairline md:block">
+              <table className="w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-brand-dark/[0.06] text-[13px] text-ink-muted">
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      Producto
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      Categoría
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-right font-medium">
+                      Precio
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-right font-medium">
+                      Stock
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      Estado
+                    </th>
+                    <th scope="col" className="w-16 px-2 py-3">
+                      <span className="sr-only">Acciones</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-brand-dark/[0.06] [&>tr:last-child>td:first-child]:rounded-bl-card [&>tr:last-child>td:last-child]:rounded-br-card">
+                  {products.map((prod) => {
+                    const isActive = prod.isActive !== false;
+                    return (
+                      <tr
+                        key={prod.id}
+                        className="relative transition-colors hover:*:bg-sunken/70"
                       >
-                        <img
-                          src={getOptimizedImageUrl(primaryImg, 'thumbnail')}
-                          alt={prod.title || 'Producto'}
-                          onError={(e) => {
-                            e.currentTarget.onerror = null;
-                            e.currentTarget.src = PLACEHOLDER_IMAGE;
-                          }}
-                          className="w-full h-full object-contain object-center"
-                        />
-                      </a>
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <a
-                            href={`/admin/products/${prod.id}/edit`}
-                            className="text-sm font-bold text-brand-dark truncate"
-                          >
-                            {prod.title || 'Sin título'}
-                          </a>
-                          <span
-                            className={`px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider border rounded-xs shrink-0 ${
-                              isActive
-                                ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                                : 'bg-brand-dark/[0.05] text-brand-dark/60 border-brand-dark/15'
-                            }`}
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-3">
+                            <ProductThumb product={prod} className="h-12 w-10" />
+                            <div className="min-w-0">
+                              <a
+                                href={`/admin/products/${prod.id}/edit`}
+                                className="block max-w-[22rem] truncate font-medium text-brand-dark after:absolute after:inset-0"
+                              >
+                                {prod.title || 'Sin título'}
+                              </a>
+                              <p className="mt-0.5 truncate text-[13px] text-ink-muted">
+                                {prod.brandName || 'Sin marca'}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-ink-muted">
+                          {prod.categoryName || 'Sin categoría'}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums text-brand-dark">
+                          {formatPrice(Number(prod.price) || 0)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-right text-brand-dark">
+                          <StockLabel stock={calculateActiveStock(prod)} />
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <StatusBadge
+                            variant="dot"
+                            tone={isActive ? 'success' : 'neutral'}
                           >
                             {isActive ? 'Activo' : 'Inactivo'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-brand-dark/60">
-                          {prod.categoryName || 'Sin categoría asignada'}
-                        </p>
-                        <p className="text-[11px] text-brand-dark/50 truncate">
-                          Talles: {sizesSummary}
-                        </p>
-                        <div className="flex items-center justify-between pt-1">
-                          <span className="text-sm font-bold text-brand-dark tabular-nums">
-                            {formatPrice(Number(prod.price) || 0)}
-                          </span>
-                          <span className="text-xs font-mono font-semibold text-brand-dark/75">
-                            Stock: {activeStock} u.
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-brand-dark/[0.06]">
-                      <a
-                        href={`/admin/products/${prod.id}/edit`}
-                        className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs"
-                      >
-                        Editar
-                      </a>
-                      <button
-                        type="button"
-                        disabled={isToggling}
-                        onClick={() => handleToggleStatusClick(prod)}
-                        className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider border rounded-xs cursor-pointer ${
-                          isActive
-                            ? 'border-red-200 text-red-800 bg-white'
-                            : 'border-emerald-300 text-emerald-900 bg-emerald-50'
-                        }`}
-                      >
-                        {isToggling
-                          ? '...'
-                          : isActive
-                          ? 'Desactivar'
-                          : 'Activar'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteProductClick(prod)}
-                        className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-rose-700 bg-rose-50 border border-rose-200 rounded-xs cursor-pointer"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                          </StatusBadge>
+                        </td>
+                        <td className="px-2 py-2.5 text-right">
+                          <Menu
+                            className="z-10"
+                            label={`Acciones para ${prod.title || 'producto'}`}
+                            items={getMenuItems(prod)}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
-            {/* Pagination Controls */}
-            {pageData.totalPages > 1 && (
-              <div className="flex flex-wrap items-center justify-between gap-4 pt-3 border-t border-brand-dark/[0.08] text-xs">
-                <span className="text-brand-dark/60">
-                  Página{' '}
-                  <strong className="font-semibold text-brand-dark">
-                    {pageData.number + 1}
-                  </strong>{' '}
-                  de{' '}
-                  <strong className="font-semibold text-brand-dark">
-                    {pageData.totalPages}
-                  </strong>{' '}
-                  ({pageData.totalElements} productos en total)
-                </span>
+            {/* Cards (< md) */}
+            <ul className="space-y-2.5 md:hidden">
+              {products.map((prod) => {
+                const isActive = prod.isActive !== false;
+                return (
+                  <li
+                    key={prod.id}
+                    className="relative flex gap-3 rounded-card bg-white p-3 shadow-hairline transition-shadow active:shadow-card"
+                  >
+                    <ProductThumb product={prod} className="h-[72px] w-[58px]" />
+                    <div className="absolute right-0.5 top-0.5 z-10 focus-within:z-30">
+                      <Menu
+                        label={`Acciones para ${prod.title || 'producto'}`}
+                        items={getMenuItems(prod)}
+                        trigger={({ props }) => (
+                          <button
+                            {...props}
+                            className="grid size-11 place-items-center rounded-full text-ink-muted transition-colors hover:bg-sunken hover:text-brand-dark"
+                          >
+                            <Icon name="dots" size={18} />
+                          </button>
+                        )}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <a
+                        href={`/admin/products/${prod.id}/edit`}
+                        className="line-clamp-2 pr-9 text-[15px] font-semibold leading-snug text-brand-dark after:absolute after:inset-0 after:rounded-card"
+                      >
+                        {prod.title || 'Sin título'}
+                      </a>
+                      <p className="mt-0.5 truncate text-[13px] text-ink-muted">
+                        {prod.categoryName || 'Sin categoría'} ·{' '}
+                        {prod.brandName || 'Sin marca'}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+                        <span className="text-sm font-semibold tabular-nums text-brand-dark">
+                          {formatPrice(Number(prod.price) || 0)}
+                        </span>
+                        <span className="text-ink-muted">
+                          Stock: <StockLabel stock={calculateActiveStock(prod)} />
+                        </span>
+                        <StatusBadge
+                          variant="dot"
+                          tone={isActive ? 'success' : 'neutral'}
+                          className="text-[13px]"
+                        >
+                          {isActive ? 'Activo' : 'Inactivo'}
+                        </StatusBadge>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={pageData.number <= 0}
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
-                    className={`px-3.5 py-1.5 font-semibold uppercase tracking-wider border rounded-xs transition-colors ${
-                      pageData.number <= 0
-                        ? 'border-brand-dark/10 text-brand-dark/30 cursor-not-allowed'
-                        : 'border-brand-dark/20 text-brand-dark bg-white hover:border-brand-dark cursor-pointer'
-                    }`}
-                  >
-                    ← Anterior
-                  </button>
-                  <button
-                    type="button"
-                    disabled={pageData.number + 1 >= pageData.totalPages}
-                    onClick={() =>
-                      setPage((p) =>
-                        p + 1 < pageData.totalPages ? p + 1 : p
-                      )
-                    }
-                    className={`px-3.5 py-1.5 font-semibold uppercase tracking-wider border rounded-xs transition-colors ${
-                      pageData.number + 1 >= pageData.totalPages
-                        ? 'border-brand-dark/10 text-brand-dark/30 cursor-not-allowed'
-                        : 'border-brand-dark/20 text-brand-dark bg-white hover:border-brand-dark cursor-pointer'
-                    }`}
-                  >
-                    Siguiente →
-                  </button>
-                </div>
-              </div>
-            )}
+            <Pagination
+              number={pageData.number}
+              size={pageSize}
+              shown={products.length}
+              totalPages={pageData.totalPages}
+              totalElements={pageData.totalElements}
+              onPrev={() => setPage((p) => Math.max(0, p - 1))}
+              onNext={() =>
+                setPage((p) => (p + 1 < pageData.totalPages ? p + 1 : p))
+              }
+            />
           </>
         )}
       </div>
-
-      {/* Confirmation Dialog before Deactivating Product */}
-      {productToDeactivate && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-deactivate-product-title"
-        >
-          <div className="bg-[#FAF9F6] border border-brand-dark/20 max-w-md w-full p-6 sm:p-7 rounded-xs shadow-lg space-y-5">
-            <div className="space-y-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-red-700">
-                Confirmar desactivación
-              </span>
-              <h3
-                id="modal-deactivate-product-title"
-                className="text-lg font-bold tracking-tight text-brand-dark"
-              >
-                ¿Desactivar producto del catálogo público?
-              </h3>
-              <p className="text-xs sm:text-sm text-brand-dark/70 leading-relaxed">
-                Estás por desactivar{' '}
-                <strong className="font-semibold text-brand-dark">
-                  {productToDeactivate.title}
-                </strong>
-                . El producto dejará de mostrarse en la tienda pública, pero
-                conservará su historial, variantes y fotografías en el panel
-                administrativo.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                disabled={togglingProductId != null}
-                onClick={() => setProductToDeactivate(null)}
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark border border-brand-dark/20 bg-white hover:bg-brand-dark/[0.04] rounded-xs cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={togglingProductId != null}
-                onClick={() => executeStatusChange(productToDeactivate, false)}
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white bg-red-700 hover:bg-red-800 rounded-xs cursor-pointer"
-              >
-                {togglingProductId != null
-                  ? 'Desactivando...'
-                  : 'Sí, desactivar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* SweetAlert Floating Feedback */}
-      <SweetAlertModal {...sweetAlert} />
     </AdminShell>
   );
 }
-

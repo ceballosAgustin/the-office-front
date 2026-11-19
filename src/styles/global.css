@@ -6,6 +6,75 @@
   --color-brand-light: #FAFAFA;
   --color-brand-alt: #FCFCFC;
 
+  /* --- Neutros derivados de brand-dark (rediseño storefront) --- */
+  --color-ink-soft: color-mix(in oklab, var(--color-brand-dark) 92%, white);
+  --color-ink-muted: color-mix(in oklab, var(--color-brand-dark) 68%, white);
+  --color-sunken: color-mix(in oklab, var(--color-brand-dark) 5%, white);
+  --color-hairline: color-mix(in oklab, var(--color-brand-dark) 8%, transparent);
+
+  /* Acento arena: solo texto/íconos sobre brand-dark, o relleno con texto brand-dark. NUNCA texto/líneas finas sobre claro. */
+  --color-brand-sand: #DCCF9E;
+  --color-brand-sand-deep: #D4C48A;
+
+  /* Radios nuevos (NO se redefine --radius-xs: el admin comparte global.css) */
+  --radius-ctl: 0.75rem;
+  --radius-card: 1.25rem;
+  --radius-tile: 1.75rem;
+
+  /* Sombras cálidas tintadas de brand-dark */
+  --shadow-hairline: 0 0 0 1px rgb(29 17 13 / 0.06);
+  --shadow-card: 0 1px 2px rgb(29 17 13 / 0.04), 0 8px 24px -12px rgb(29 17 13 / 0.12);
+  --shadow-card-hover: 0 2px 4px rgb(29 17 13 / 0.05), 0 18px 40px -16px rgb(29 17 13 / 0.24);
+  --shadow-float: 0 10px 30px -10px rgb(29 17 13 / 0.30);
+  --shadow-sheet: 0 -8px 40px -12px rgb(29 17 13 / 0.25);
+
+  /* Ritmo vertical */
+  --spacing-section: 4rem;
+  --spacing-section-lg: 6rem;
+
+  /* Tipografía (piso de 12px) */
+  --text-display: 4.25rem;
+  --text-display--line-height: 1.04;
+  --text-display--letter-spacing: -0.035em;
+  --text-display--font-weight: 600;
+  --text-title: 2rem;
+  --text-title--line-height: 1.15;
+  --text-title--letter-spacing: -0.025em;
+  --text-title--font-weight: 600;
+  --text-headline: 1.0625rem;
+  --text-headline--line-height: 1.4;
+  --text-headline--font-weight: 600;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.55;
+  --text-footnote: 0.8125rem;
+  --text-caption: 0.75rem;
+
+  /* Movimiento */
+  --ease-ios: cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-fade-up: fadeUp 0.5s var(--ease-ios) both;
+
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  --animate-sheet-up: sheetUp 0.3s var(--ease-ios) both;
+
+  @keyframes sheetUp {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: none;
+    }
+  }
+
   --animate-fadeIn: fadeIn 0.2s ease-out;
 
   @keyframes fadeIn {
@@ -75,8 +144,8 @@
   .form-textarea {
     background-color: #ffffff;
     color: var(--color-brand-dark);
-    border: 1px solid color-mix(in oklab, var(--color-brand-dark) 20%, transparent);
-    border-radius: var(--radius-xs, 0.125rem);
+    border: 1px solid color-mix(in oklab, var(--color-brand-dark) 16%, transparent);
+    border-radius: var(--radius-ctl);
     transition-property: color, background-color, border-color;
     transition-duration: 150ms;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -84,7 +153,8 @@
 
   .form-input::placeholder,
   .form-textarea::placeholder {
-    color: color-mix(in oklab, var(--color-brand-dark) 35%, transparent);
+    color: var(--color-ink-muted);
+    opacity: 0.8;
   }
 
   .form-input:focus,

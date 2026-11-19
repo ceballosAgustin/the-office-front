@@ -404,7 +404,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 items-start">
           {/* Gallery Skeleton (Left 58%) */}
-          <div className="lg:col-span-7 w-full aspect-[4/3] max-h-[500px] bg-brand-dark/5 rounded-xs" />
+          <div className="lg:col-span-7 w-full aspect-[4/3] max-h-[500px] bg-sunken rounded-tile" />
 
           {/* Meta & Purchase Skeleton (Right 42%) */}
           <div className="lg:col-span-5 w-full space-y-6">
@@ -428,7 +428,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
   if (error && error.isNotFound) {
     return (
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20 sm:py-28 text-center space-y-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-dark/40">
+        <p className="text-[13px] font-semibold text-ink-muted">
           Error 404
         </p>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-brand-dark">
@@ -440,7 +440,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
         <div className="pt-4">
           <a
             href="/#catalogo"
-            className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] bg-brand-dark px-5 py-2.5 rounded-xs hover:opacity-85 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30"
+            className="inline-flex h-11 items-center gap-2 text-sm font-semibold text-brand-light bg-brand-dark px-6 rounded-full hover:bg-ink-soft transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30"
           >
             ← Volver al catálogo completo
           </a>
@@ -480,7 +480,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
           <button
             type="button"
             onClick={() => loadProductAndContext(navState)}
-            className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] bg-brand-dark hover:opacity-85 transition-opacity rounded-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 cursor-pointer"
+            className="inline-flex h-11 items-center justify-center px-6 text-sm font-semibold text-brand-light bg-brand-dark hover:bg-ink-soft transition-colors rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 cursor-pointer"
           >
             Reintentar
           </button>
@@ -504,7 +504,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
         className="flex items-center justify-between sm:justify-end gap-2 sm:gap-2.5"
       >
         <span
-          className="text-[11px] font-mono tracking-wider text-brand-dark/40 tabular-nums mr-1 select-none"
+          className="text-xs text-ink-muted tabular-nums mr-1 select-none"
           aria-live="polite"
         >
           {effectiveContext.brand
@@ -531,7 +531,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
               onClick={(e) => handleNavigateToProduct(e, previousProduct)}
               aria-label={`Producto anterior: ${previousProduct.title}`}
               title={previousProduct.title}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium tracking-tight text-brand-dark/75 hover:text-brand-dark hover:bg-brand-dark/[0.04] border border-brand-dark/15 rounded-xs transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30"
+              className="inline-flex items-center gap-1.5 min-h-11 px-4 text-[13px] font-medium text-brand-dark bg-white shadow-hairline hover:shadow-card rounded-full transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -556,7 +556,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
               disabled
               aria-disabled="true"
               aria-label="Sin producto anterior"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium tracking-tight text-brand-dark/25 border border-brand-dark/[0.07] rounded-xs cursor-not-allowed select-none"
+              className="inline-flex items-center gap-1.5 min-h-11 px-4 text-[13px] font-medium text-ink-muted/60 bg-sunken rounded-full cursor-not-allowed select-none"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -586,7 +586,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
               onClick={(e) => handleNavigateToProduct(e, nextProduct)}
               aria-label={`Producto siguiente: ${nextProduct.title}`}
               title={nextProduct.title}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium tracking-tight text-brand-dark/75 hover:text-brand-dark hover:bg-brand-dark/[0.04] border border-brand-dark/15 rounded-xs transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30"
+              className="inline-flex items-center gap-1.5 min-h-11 px-4 text-[13px] font-medium text-brand-dark bg-white shadow-hairline hover:shadow-card rounded-full transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30"
             >
               <span>Siguiente</span>
               <svg
@@ -611,7 +611,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
               disabled
               aria-disabled="true"
               aria-label="Sin producto siguiente"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium tracking-tight text-brand-dark/25 border border-brand-dark/[0.07] rounded-xs cursor-not-allowed select-none"
+              className="inline-flex items-center gap-1.5 min-h-11 px-4 text-[13px] font-medium text-ink-muted/60 bg-sunken rounded-full cursor-not-allowed select-none"
             >
               <span>Siguiente</span>
               <svg
@@ -642,16 +642,16 @@ export default function ProductDetailView({ productId = '' } = {}) {
       {/* Top Bar: Breadcrumbs & Previous/Next Product Navigation */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3.5 mb-6 sm:mb-8 border-b border-brand-dark/[0.08]">
         <nav aria-label="Breadcrumb">
-          <ol className="flex items-center flex-wrap gap-2 text-xs text-brand-dark/50">
+          <ol className="flex items-center flex-wrap gap-2 text-[13px] text-ink-muted">
             <li>
               <a
                 href="/"
                 className="hover:text-brand-dark transition-colors duration-150 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
               >
-                Home
+                Inicio
               </a>
             </li>
-            <li aria-hidden="true" className="select-none text-brand-dark/30">
+            <li aria-hidden="true" className="select-none text-ink-muted">
               /
             </li>
             <li>
@@ -662,7 +662,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
                 {product.category}
               </a>
             </li>
-            <li aria-hidden="true" className="select-none text-brand-dark/30">
+            <li aria-hidden="true" className="select-none text-ink-muted">
               /
             </li>
             <li
@@ -698,31 +698,31 @@ export default function ProductDetailView({ productId = '' } = {}) {
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 flex-wrap">
                 {product.brandName && (
-                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-dark">
+                  <span className="text-[13px] font-semibold text-brand-dark">
                     {product.brandName}
                   </span>
                 )}
                 {product.brandName && product.category && (
-                  <span className="text-brand-dark/30 text-xs select-none">/</span>
+                  <span className="text-ink-muted text-xs select-none">/</span>
                 )}
-                <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/50">
+                <span className="text-[13px] text-ink-muted">
                   {product.category}
                 </span>
               </div>
               {product.badge && (
-                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] px-2 py-0.5 bg-brand-dark text-[#FAFAFA] rounded-xs">
+                <span className="text-xs font-semibold px-2.5 py-1 bg-brand-dark text-brand-sand rounded-full">
                   {product.badge}
                 </span>
               )}
             </div>
 
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-brand-dark leading-[1.1]">
+            <h1 className="text-3xl sm:text-4xl font-semibold tracking-[-0.03em] text-brand-dark leading-[1.1]">
               {product.title}
             </h1>
 
-            <p className="text-xl sm:text-2xl font-semibold tracking-tight text-brand-dark tabular-nums pt-1 flex flex-wrap items-baseline gap-2.5">
+            <p className="text-2xl font-semibold tracking-tight text-brand-dark tabular-nums pt-1 flex flex-wrap items-baseline gap-2.5">
               {product.formattedPreviousPrice && (
-                <span className="text-base sm:text-lg text-brand-dark/45 line-through font-normal">
+                <span className="text-base text-ink-muted line-through font-normal">
                   {product.formattedPreviousPrice}
                 </span>
               )}
@@ -740,7 +740,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
           {product.description && (
             <div className="space-y-3">
               <h2 className="sr-only">Descripción</h2>
-              <p className="text-sm sm:text-[15px] text-brand-dark/75 leading-relaxed whitespace-pre-line">
+              <p className="text-[15px] text-ink-muted leading-relaxed whitespace-pre-line">
                 {product.description}
               </p>
             </div>
@@ -754,13 +754,13 @@ export default function ProductDetailView({ productId = '' } = {}) {
           />
 
           {/* Shipping & Support Micro-info */}
-          <div className="border-t border-brand-dark/[0.08] pt-4 grid grid-cols-2 gap-3 text-[11px] text-brand-dark/50">
+          <div className="border-t border-brand-dark/[0.08] pt-4 grid grid-cols-2 gap-3 text-xs text-ink-muted">
             <div className="space-y-0.5">
-              <p className="font-medium text-brand-dark/80">Envíos a todo el país</p>
+              <p className="font-medium text-brand-dark">Envíos a todo el país</p>
               <p>Despacho seguro desde Buenos Aires</p>
             </div>
             <div className="space-y-0.5">
-              <p className="font-medium text-brand-dark/80">Cambios y garantía</p>
+              <p className="font-medium text-brand-dark">Cambios y garantía</p>
               <p>Hasta 30 días para cambios de talle</p>
             </div>
           </div>
@@ -771,7 +771,7 @@ export default function ProductDetailView({ productId = '' } = {}) {
       <div className="mt-16 pt-8 border-t border-brand-dark/[0.08] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <a
           href={catalogBackHref}
-          className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold tracking-tight text-brand-dark hover:text-brand-dark/60 transition-colors duration-150 py-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
+          className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-brand-dark hover:opacity-70 transition-opacity duration-150 py-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 rounded-xs"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

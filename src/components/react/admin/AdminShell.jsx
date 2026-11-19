@@ -1,13 +1,146 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   getAdminSession,
   clearAdminSession,
   onAdminAuthChange,
 } from '../../../services/adminAuth';
+import { fetchAdminInquiries } from '../../../services/api';
+import Icon from './ui/icons';
+import PageHeader from './ui/PageHeader';
+import { ToastProvider } from './ui/Toast';
+import { cx } from './ui/cx';
+
+export { PageHeader };
+
+const NAV_GROUPS = [
+  {
+    title: 'Ventas',
+    items: [
+      { id: 'dashboard', label: 'Inicio', href: '/admin', icon: 'home' },
+      { id: 'inquiries', label: 'Consultas', href: '/admin/inquiries', icon: 'chat', badge: true },
+      { id: 'orders', label: 'Pedidos', href: '/admin/orders', icon: 'bag' },
+    ],
+  },
+  {
+    title: 'Catálogo',
+    items: [
+      { id: 'products', label: 'Productos', href: '/admin/products', icon: 'tag' },
+      { id: 'categories', label: 'Categorías', href: '/admin/categories', icon: 'grid' },
+      { id: 'brands', label: 'Marcas', href: '/admin/brands', icon: 'star' },
+    ],
+  },
+  {
+    title: 'Tienda',
+    items: [
+      { id: 'navigation', label: 'Navegación', href: '/admin/navigation', icon: 'list' },
+    ],
+  },
+];
+
+function Wordmark({ className }) {
+  return (
+    <span
+      className={cx(
+        'inline-flex select-none items-baseline font-bold uppercase tracking-[-0.03em]',
+        className
+      )}
+    >
+      THE OFFICE
+      <sup className="relative -top-1.5 ml-0.5 text-[10px] leading-none">BA</sup>
+    </span>
+  );
+}
+
+function NavList({ activeSection, newInquiries, onNavigate }) {
+  return (
+    <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-2" aria-label="Administración">
+      {NAV_GROUPS.map((group) => (
+        <div key={group.title} className="mb-3">
+          <p className="px-3 pb-1 pt-2 text-xs font-medium text-brand-light/60">
+            {group.title}
+          </p>
+          <ul className="space-y-0.5">
+            {group.items.map((item) => {
+              const isActive = activeSection === item.id;
+              const count = item.badge ? newInquiries : 0;
+              return (
+                <li key={item.id}>
+                  <a
+                    href={item.href}
+                    onClick={onNavigate}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={cx(
+                      'flex min-h-11 items-center gap-3 rounded-ctl px-3 text-sm transition-colors focus-visible:outline-brand-sand',
+                      isActive
+                        ? 'bg-brand-sand font-semibold text-brand-dark'
+                        : 'text-brand-light/85 hover:bg-white/[0.07] hover:text-white'
+                    )}
+                  >
+                    <Icon name={item.icon} size={20} className="shrink-0" />
+                    <span className="flex-1 truncate">{item.label}</span>
+                    {count > 0 && (
+                      <span
+                        className={cx(
+                          'min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-semibold tabular-nums',
+                          isActive ? 'bg-brand-dark text-brand-sand' : 'bg-brand-sand text-brand-dark'
+                        )}
+                        aria-label={`${count} ${count === 1 ? 'nueva' : 'nuevas'}`}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+function SidebarFooter({ username, onLogout, onNavigate }) {
+  const initial = (username || 'a').trim().charAt(0).toUpperCase() || 'A';
+  return (
+    <div className="border-t border-white/10 p-3">
+      <a
+        href="/"
+        onClick={onNavigate}
+        className="flex min-h-11 items-center gap-3 rounded-ctl px-3 text-sm text-brand-light/80 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-brand-sand"
+      >
+        <span>Tienda pública</span>
+        <Icon name="external" size={16} />
+      </a>
+      <div className="mt-1 flex items-center gap-3 px-3 py-2">
+        <span
+          className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-sand text-sm font-semibold text-brand-dark"
+          aria-hidden="true"
+        >
+          {initial}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-brand-light">{username}</p>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="-ml-1 inline-flex min-h-11 items-center rounded-md px-1 text-[13px] text-brand-light/70 transition-colors hover:text-white focus-visible:outline-brand-sand"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminShell({ activeSection = 'dashboard', children }) {
   const [session, setSession] = useState(null);
   const [isChecking, setIsChecking] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [newInquiries, setNewInquiries] = useState(0);
+  const openButtonRef = useRef(null);
+  const closeButtonRef = useRef(null);
 
   useEffect(() => {
     const current = getAdminSession();
@@ -31,6 +164,43 @@ export default function AdminShell({ activeSection = 'dashboard', children }) {
     };
   }, []);
 
+  // Contador de consultas nuevas para el menú (best-effort: si falla, no se muestra; cada pantalla maneja su propio 401/403)
+  const hasSession = Boolean(session);
+  useEffect(() => {
+    if (!hasSession) return undefined;
+    let cancelled = false;
+    // Una sola request liviana (size=1): solo interesa totalElements
+    fetchAdminInquiries({ status: 'NEW', page: 0, size: 1 })
+      .then((page) => {
+        if (!cancelled) setNewInquiries(Number(page?.totalElements) || 0);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [hasSession]);
+
+  // Drawer: Escape cierra, bloquea scroll del fondo y maneja el foco
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    // El panel pasa de visibility:hidden a visible con transición: hay que esperar un frame para poder enfocar
+    const focusTimer = setTimeout(() => closeButtonRef.current?.focus(), 50);
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setDrawerOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+      openButtonRef.current?.focus();
+    };
+  }, [drawerOpen]);
+
   const handleLogout = () => {
     clearAdminSession();
     window.location.replace('/admin/login');
@@ -38,149 +208,125 @@ export default function AdminShell({ activeSection = 'dashboard', children }) {
 
   if (isChecking || !session) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="text-center space-y-2 animate-pulse">
-          <p className="text-xs font-mono uppercase tracking-[0.2em] text-brand-dark/50">
-            The Office BA — Admin
-          </p>
-          <p className="text-sm font-medium text-brand-dark/70">
-            Verificando sesión administrativa...
-          </p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <p
+          className="animate-pulse text-sm font-medium text-ink-muted"
+          role="status"
+        >
+          Verificando sesión…
+        </p>
       </div>
     );
   }
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', href: '/admin' },
-    { id: 'orders', label: 'Orders', href: '/admin/orders' },
-    { id: 'inquiries', label: 'Consultas Comerciales', href: '/admin/inquiries' },
-    { id: 'products', label: 'Products', href: '/admin/products' },
-    { id: 'categories', label: 'Categories', href: '/admin/categories' },
-    { id: 'brands', label: 'Marcas', href: '/admin/brands' },
-    { id: 'navigation', label: 'Configuración de navegación', href: '/admin/navigation' },
-  ];
+  const closeDrawer = () => setDrawerOpen(false);
+  const initial = (session.username || 'a').trim().charAt(0).toUpperCase() || 'A';
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Top Administrative Navigation Bar */}
-      <header className="sticky top-0 z-40 bg-[#FAFAFA]/90 backdrop-blur-md border-b border-brand-dark/[0.08]">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 sm:h-16 gap-4">
-            {/* Left: Brand + Admin Label & Primary Links */}
-            <div className="flex items-center gap-6 lg:gap-8">
-              <a
-                href="/admin"
-                className="inline-flex items-center gap-2.5 text-brand-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/20 rounded-xs"
-              >
-                <span className="inline-flex items-baseline text-base font-bold tracking-[-0.03em] uppercase select-none">
-                  THE OFFICE
-                  <sup className="text-[9px] font-bold tracking-tight relative -top-1.5 ml-0.5 leading-none text-brand-dark">
-                    BA
-                  </sup>
-                </span>
-                <span className="text-[10px] font-mono uppercase tracking-[0.18em] px-2 py-0.5 bg-brand-dark text-[#FAFAFA] rounded-xs">
+    <ToastProvider>
+      <div className="min-h-screen">
+        {/* Sidebar (desktop) */}
+        <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col bg-brand-dark text-brand-light lg:flex">
+          <a
+            href="/admin"
+            className="flex h-16 shrink-0 items-center gap-2.5 px-5 focus-visible:outline-brand-sand"
+          >
+            <Wordmark className="text-[17px] text-brand-sand" />
+            <span className="rounded-full bg-brand-sand px-2 py-0.5 text-xs font-semibold text-brand-dark">
+              Admin
+            </span>
+          </a>
+          <NavList activeSection={activeSection} newInquiries={newInquiries} />
+          <SidebarFooter username={session.username} onLogout={handleLogout} />
+        </aside>
+
+        {/* Barra superior (mobile) */}
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-brand-dark/[0.08] bg-brand-light px-3 lg:hidden">
+          <button
+            ref={openButtonRef}
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            aria-label="Abrir menú"
+            aria-expanded={drawerOpen}
+            aria-controls="admin-drawer"
+            className="grid size-11 place-items-center rounded-full text-brand-dark transition-colors hover:bg-brand-dark/[0.06] active:scale-[0.97]"
+          >
+            <Icon name="menu" size={22} />
+          </button>
+          <a href="/admin" className="rounded-md text-brand-dark">
+            <Wordmark className="text-base" />
+          </a>
+          <span
+            className="grid size-9 place-items-center rounded-full bg-brand-dark text-sm font-semibold text-brand-sand"
+            aria-hidden="true"
+          >
+            {initial}
+          </span>
+        </header>
+
+        {/* Drawer (mobile) */}
+        <div
+          id="admin-drawer"
+          inert={!drawerOpen}
+          aria-hidden={!drawerOpen}
+          className={cx(
+            'fixed inset-0 z-50 transition-[visibility] duration-300 lg:hidden',
+            drawerOpen ? 'visible' : 'invisible'
+          )}
+        >
+          <div
+            onClick={closeDrawer}
+            className={cx(
+              'absolute inset-0 bg-brand-dark/45 transition-opacity duration-300',
+              drawerOpen ? 'opacity-100' : 'opacity-0'
+            )}
+          />
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menú de administración"
+            className={cx(
+              'absolute inset-y-0 left-0 flex w-[84%] max-w-xs flex-col rounded-r-tile bg-brand-dark text-brand-light transition-transform duration-300 ease-ios',
+              drawerOpen ? 'translate-x-0' : '-translate-x-full'
+            )}
+          >
+            <div className="flex h-14 shrink-0 items-center justify-between pl-5 pr-2">
+              <span className="flex items-center gap-2.5">
+                <Wordmark className="text-base text-brand-sand" />
+                <span className="rounded-full bg-brand-sand px-2 py-0.5 text-xs font-semibold text-brand-dark">
                   Admin
                 </span>
-              </a>
-
-              {/* Desktop Navigation */}
-              <nav
-                className="hidden md:flex items-center gap-1"
-                aria-label="Navegación administrativa"
+              </span>
+              <button
+                ref={closeButtonRef}
+                type="button"
+                onClick={closeDrawer}
+                aria-label="Cerrar menú"
+                className="grid size-11 place-items-center rounded-full transition-colors hover:bg-white/10 focus-visible:outline-brand-sand"
               >
-                {navItems.map((item) => {
-                  const isActive = activeSection === item.id;
-                  return (
-                    <a
-                      key={item.id}
-                      href={item.href}
-                      className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-xs transition-colors ${
-                        isActive
-                          ? 'bg-brand-dark/[0.08] text-brand-dark'
-                          : 'text-brand-dark/60 hover:text-brand-dark hover:bg-brand-dark/[0.04]'
-                      }`}
-                    >
-                      {item.label}
-                    </a>
-                  );
-                })}
-              </nav>
+                <Icon name="x" size={22} />
+              </button>
             </div>
+            <NavList
+              activeSection={activeSection}
+              newInquiries={newInquiries}
+              onNavigate={closeDrawer}
+            />
+            <SidebarFooter
+              username={session.username}
+              onLogout={handleLogout}
+              onNavigate={closeDrawer}
+            />
+          </aside>
+        </div>
 
-            {/* Right: Store Link, User & Logout */}
-            <div className="flex items-center gap-3 sm:gap-4">
-              <a
-                href="/"
-                className="text-xs font-medium text-brand-dark/60 hover:text-brand-dark transition-colors hidden sm:inline-flex items-center gap-1"
-              >
-                <span>Tienda pública</span>
-                <span aria-hidden="true">↗</span>
-              </a>
-
-              <div className="h-4 w-px bg-brand-dark/10 hidden sm:block" />
-
-              <div className="flex items-center gap-3">
-                <span className="hidden sm:inline-block text-xs font-mono text-brand-dark/60">
-                  {session.username}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-brand-dark border border-brand-dark/20 hover:bg-brand-dark hover:text-[#FAFAFA] transition-colors rounded-xs cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30"
-                >
-                  Cerrar sesión
-                </button>
-              </div>
-            </div>
+        {/* Contenido */}
+        <main className="lg:pl-60">
+          <div className="mx-auto w-full max-w-[1180px] px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-8">
+            {children}
           </div>
-
-          {/* Mobile Compact Sub-navigation */}
-          <nav
-            className="flex md:hidden items-center justify-between border-t border-brand-dark/[0.06] py-2 gap-2 overflow-x-auto"
-            aria-label="Navegación administrativa móvil"
-          >
-            <div className="flex items-center gap-1">
-              {navItems.map((item) => {
-                const isActive = activeSection === item.id;
-                return (
-                  <a
-                    key={item.id}
-                    href={item.href}
-                    className={`px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider rounded-xs whitespace-nowrap ${
-                      isActive
-                        ? 'bg-brand-dark text-[#FAFAFA]'
-                        : 'text-brand-dark/65 hover:text-brand-dark'
-                    }`}
-                  >
-                    {item.label}
-                  </a>
-                );
-              })}
-            </div>
-            <a
-              href="/"
-              className="text-[11px] font-medium text-brand-dark/60 hover:text-brand-dark whitespace-nowrap px-2 py-1"
-            >
-              Tienda ↗
-            </a>
-          </nav>
-        </div>
-      </header>
-
-      {/* Main Administrative Content Area */}
-      <main className="flex-1 mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
-        {children}
-      </main>
-
-      {/* Compact Admin Footer */}
-      <footer className="border-t border-brand-dark/[0.08] bg-[#FAFAFA]/70 py-4 mt-auto">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-brand-dark/45">
-          <span>The Office BA — Panel de Gestión Comercial</span>
-          <span className="font-mono uppercase">Sesión activa: {session.username} (ADMIN)</span>
-        </div>
-      </footer>
-    </div>
+        </main>
+      </div>
+    </ToastProvider>
   );
 }
-

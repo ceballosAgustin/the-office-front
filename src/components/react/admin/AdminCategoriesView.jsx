@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import AdminShell from './AdminShell';
+import Button from './ui/Button';
+import Field, { inputClass } from './ui/Field';
+import Menu from './ui/Menu';
+import Icon from './ui/icons';
+import Modal from './ui/Modal';
+import PageHeader from './ui/PageHeader';
+import EmptyState from './ui/EmptyState';
+import ErrorState from './ui/ErrorState';
+import ListSkeleton from './ui/ListSkeleton';
+import { toast } from './ui/Toast';
 import {
   fetchAdminCategories,
   createAdminCategory,
@@ -13,9 +23,7 @@ export default function AdminCategoriesView() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
-  // Page-level feedback banners
-  const [successMessage, setSuccessMessage] = useState(null);
-  const [errorBanner, setErrorBanner] = useState(null);
+  // Aviso persistente (409: la categoría tiene productos asociados). El resto del feedback va por toast.
   const [conflictBanner, setConflictBanner] = useState(null);
 
   // Create / Edit Modal state
@@ -27,10 +35,6 @@ export default function AdminCategoriesView() {
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [formModalError, setFormModalError] = useState(null);
   const [formFieldErrors, setFormFieldErrors] = useState({});
-
-  // Delete Confirmation Modal state
-  const [categoryToDelete, setCategoryToDelete] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadCategories = useCallback(async () => {
     setIsLoading(true);
@@ -58,8 +62,6 @@ export default function AdminCategoriesView() {
 
   // Open Modal in Create Mode
   const handleOpenCreateModal = () => {
-    setSuccessMessage(null);
-    setErrorBanner(null);
     setConflictBanner(null);
     setEditingCategory(null);
     setNameInput('');
@@ -72,8 +74,6 @@ export default function AdminCategoriesView() {
 
   // Open Modal in Edit Mode
   const handleOpenEditModal = (category) => {
-    setSuccessMessage(null);
-    setErrorBanner(null);
     setConflictBanner(null);
     setEditingCategory(category);
     setNameInput(category.name || '');
@@ -186,9 +186,9 @@ export default function AdminCategoriesView() {
         );
         setIsFormModalOpen(false);
         setEditingCategory(null);
-        setSuccessMessage(
-          `La categoría "${updated.name}" (slug: ${updated.slug}) fue actualizada correctamente.`
-        );
+        toast.success(`"${updated.name}" (slug: ${updated.slug}) se actualizó.`, {
+          title: 'Categoría actualizada',
+        });
       } else {
         // Create mode: send name and optional slug
         const created = await createAdminCategory({
@@ -198,9 +198,9 @@ export default function AdminCategoriesView() {
 
         setCategories((prev) => [...prev, created]);
         setIsFormModalOpen(false);
-        setSuccessMessage(
-          `Categoría "${created.name}" creada exitosamente con slug "${created.slug}". Ya está disponible en Products Management.`
-        );
+        toast.success(`"${created.name}" (slug: ${created.slug}) ya está disponible en Productos.`, {
+          title: 'Categoría creada',
+        });
       }
     } catch (err) {
       if (err?.status === 401) {
@@ -225,31 +225,19 @@ export default function AdminCategoriesView() {
     }
   };
 
-  // Delete Category Handler
-  const handleConfirmDelete = async () => {
-    if (!categoryToDelete || isDeleting) return;
-    setIsDeleting(true);
-    setSuccessMessage(null);
-    setErrorBanner(null);
+  // Delete Category Handler (la confirmación es en línea, en el menú de la fila)
+  const performDelete = async (target) => {
     setConflictBanner(null);
-
-    const target = categoryToDelete;
 
     try {
       await deleteAdminCategory(target.id);
       setCategories((prev) => prev.filter((cat) => cat.id !== target.id));
-      setCategoryToDelete(null);
-      setSuccessMessage(
-        `La categoría "${target.name}" fue eliminada correctamente.`
-      );
+      toast.success(`"${target.name}" se eliminó.`, { title: 'Categoría eliminada' });
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-
-      // Close modal and display appropriate feedback without removing category from state
-      setCategoryToDelete(null);
 
       if (err?.status === 409) {
         setConflictBanner({
@@ -259,521 +247,220 @@ export default function AdminCategoriesView() {
             `No se puede eliminar la categoría "${target.name}" porque tiene productos asociados.`,
         });
       } else {
-        setErrorBanner(
-          err?.message ||
-            `No se pudo eliminar la categoría "${target.name}".`
-        );
+        toast.error(err?.message || `No se pudo eliminar la categoría "${target.name}".`);
       }
-    } finally {
-      setIsDeleting(false);
     }
   };
 
+  const getMenuItems = (cat) => [
+    { key: 'edit', label: 'Editar', onSelect: () => handleOpenEditModal(cat) },
+    {
+      key: 'delete',
+      label: 'Eliminar…',
+      danger: true,
+      confirm: {
+        message: `Se elimina "${cat.name}". Si tiene productos asociados (activos o inactivos), el servidor lo va a impedir.`,
+        confirmLabel: 'Eliminar',
+      },
+      onSelect: () => performDelete(cat),
+    },
+  ];
+
   return (
     <AdminShell activeSection="categories">
-      <div className="space-y-6">
-        {/* Page Header */}
-        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-brand-dark/[0.08] pb-4">
-          <div className="space-y-1">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/45">
-              Organización del Catálogo
-            </span>
-            <div className="flex items-baseline gap-3">
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-brand-dark">
-                Categories Management
-              </h1>
-              <span className="text-xs font-mono text-brand-dark/45">
-                [{isLoading ? '--' : categories.length}]
+      <div className="space-y-4">
+        <PageHeader
+          title="Categorías"
+          subtitle={
+            isLoading || loadError
+              ? ''
+              : `${categories.length} ${categories.length === 1 ? 'categoría' : 'categorías'}`
+          }
+          actions={
+            <Button size="sm" className="lg:min-h-10" onClick={handleOpenCreateModal}>
+              <span className="whitespace-nowrap">
+                + Nueva<span className="hidden sm:inline"> categoría</span>
               </span>
-            </div>
-          </div>
+            </Button>
+          }
+        />
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              type="button"
-              onClick={loadCategories}
-              disabled={isLoading}
-              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/15 hover:border-brand-dark rounded-xs transition-colors cursor-pointer"
-            >
-              Actualizar
-            </button>
-            <a
-              href="/admin/products"
-              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white/85 border border-brand-dark/20 hover:border-brand-dark rounded-xs transition-colors"
-            >
-              Ir a Products
-            </a>
-            <button
-              type="button"
-              onClick={handleOpenCreateModal}
-              className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] bg-brand-dark hover:opacity-90 rounded-xs transition-opacity cursor-pointer"
-            >
-              + Nueva categoría
-            </button>
-          </div>
-        </div>
-
-        {/* Success Feedback Banner */}
-        {successMessage && (
-          <div
-            className="p-4 bg-emerald-50/95 border border-emerald-200 rounded-xs text-xs sm:text-sm text-emerald-900 flex items-center justify-between gap-3"
-            role="status"
-          >
-            <div className="space-y-1">
-              <p className="font-semibold">{successMessage}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSuccessMessage(null)}
-              className="text-emerald-900 hover:opacity-70 font-bold cursor-pointer shrink-0"
-              aria-label="Cerrar mensaje"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* 409 Conflict Banner when trying to delete a category with associated products */}
+        {/* 409: categoría con productos asociados */}
         {conflictBanner && (
-          <div
-            className="p-5 bg-amber-50/95 border border-amber-300 rounded-xs text-xs sm:text-sm text-amber-950 space-y-2.5"
-            role="alert"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <span className="inline-block text-[10px] font-mono font-bold uppercase tracking-widest px-2 py-0.5 bg-amber-900/10 text-amber-900 rounded-xs">
-                  Restricción de Integridad — 409 Conflict
-                </span>
-                <p className="font-bold text-sm sm:text-base text-brand-dark">
-                  {conflictBanner.backendMessage}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setConflictBanner(null)}
-                className="text-amber-900 hover:opacity-70 font-bold p-1 cursor-pointer shrink-0"
-                aria-label="Cerrar aviso de conflicto"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-xs text-amber-900/85 leading-relaxed">
-              Esta categoría posee productos asociados (activos o inactivos) en
-              la base de datos. Para poder eliminarla, primero debés ingresar a{' '}
-              <strong>Products Management</strong> y reasignar esos productos a
-              otra categoría.
-            </p>
-
-            <div className="flex flex-wrap items-center gap-3 pt-1">
-              <a
-                href="/admin/products"
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs hover:opacity-90 transition-opacity"
-              >
-                <span>Ir a Products Management</span>
-                <span aria-hidden="true">→</span>
-              </a>
-              <button
-                type="button"
-                onClick={() => setConflictBanner(null)}
-                className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-brand-dark border border-brand-dark/20 bg-white hover:bg-brand-dark/[0.04] rounded-xs cursor-pointer"
-              >
-                Entendido, cerrar aviso
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* General Action Error Banner */}
-        {errorBanner && (
-          <div
-            className="p-4 bg-red-50/95 border border-red-200 rounded-xs text-xs sm:text-sm text-red-800 flex items-center justify-between gap-3"
-            role="alert"
-          >
-            <span>{errorBanner}</span>
-            <button
-              type="button"
-              onClick={() => setErrorBanner(null)}
-              className="text-red-800 hover:opacity-70 font-bold cursor-pointer shrink-0"
-              aria-label="Cerrar error"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Load Error State */}
-        {loadError && (
-          <div
-            className="p-4 bg-red-50/90 border border-red-200 rounded-xs text-xs text-red-800 flex flex-wrap items-center justify-between gap-3"
-            role="alert"
-          >
-            <div>
-              <p className="font-semibold">Error al obtener las categorías</p>
-              <p>{loadError}</p>
-            </div>
-            <button
-              type="button"
-              onClick={loadCategories}
-              className="px-3 py-1.5 font-semibold uppercase tracking-wider bg-red-800 text-white rounded-xs cursor-pointer"
-            >
-              Reintentar
-            </button>
-          </div>
-        )}
-
-        {/* Loading State */}
-        {isLoading && (
-          <div className="space-y-2.5 animate-pulse">
-            {Array.from({ length: 4 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="h-14 w-full bg-[#F2F2F0] rounded-xs"
+          <div role="alert" className="rounded-card bg-white p-4 shadow-hairline">
+            <div className="flex items-start gap-3">
+              <span
+                className="mt-1.5 size-2 shrink-0 rounded-full bg-brand-sand-deep ring-1 ring-brand-dark/20"
+                aria-hidden="true"
               />
-            ))}
-          </div>
-        )}
-
-        {/* Empty State */}
-        {!isLoading && !loadError && categories.length === 0 && (
-          <div className="py-16 px-6 text-center bg-[#FAF9F6]/85 border border-brand-dark/10 rounded-xs space-y-3">
-            <p className="text-sm sm:text-base font-semibold text-brand-dark">
-              Todavía no hay categorías registradas
-            </p>
-            <p className="text-xs text-brand-dark/60 max-w-md mx-auto leading-relaxed">
-              Creá las categorías principales de la tienda (por ejemplo:{' '}
-              <span className="font-medium text-brand-dark">
-                Tops, Bottoms, Sneakers, Accessories
-              </span>
-              ) para organizar el catálogo y asignarlas a tus productos.
-            </p>
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={handleOpenCreateModal}
-                className="px-5 py-2.5 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] hover:opacity-90 rounded-xs cursor-pointer"
-              >
-                + Crear primera categoría
-              </button>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-brand-dark">{conflictBanner.backendMessage}</p>
+                <p className="mt-1 text-sm text-ink-muted">
+                  Para eliminarla, primero reasigná esos productos a otra categoría desde Productos.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button href="/admin/products" size="sm">
+                    Ir a Productos
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setConflictBanner(null)}>
+                    Entendido
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Categories List: Desktop Table & Mobile Cards */}
+        {loadError && (
+          <ErrorState title="No pudimos cargar las categorías" message={loadError} onRetry={loadCategories} />
+        )}
+
+        {isLoading && <ListSkeleton rows={4} rowClassName="h-16" />}
+
+        {!isLoading && !loadError && categories.length === 0 && (
+          <EmptyState
+            icon="grid"
+            title="Todavía no hay categorías"
+            description="Creá las categorías principales de la tienda (por ejemplo Tops, Bottoms, Sneakers, Accessories) para organizar el catálogo."
+            action={<Button onClick={handleOpenCreateModal}>+ Crear primera categoría</Button>}
+          />
+        )}
+
         {!isLoading && !loadError && categories.length > 0 && (
           <>
-            {/* Desktop Table */}
-            <div className="hidden md:block bg-[#FAF9F6]/90 backdrop-blur-xs border border-brand-dark/10 rounded-xs overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-brand-dark/10 bg-brand-dark/[0.03] text-[11px] font-semibold uppercase tracking-wider text-brand-dark/55">
-                      <th className="py-3.5 px-4 w-24">ID</th>
-                      <th className="py-3.5 px-4">Nombre</th>
-                      <th className="py-3.5 px-4">Slug</th>
-                      <th className="py-3.5 px-4 text-right">Acciones</th>
+            {/* Tabla (md+) */}
+            <div className="hidden rounded-card bg-white shadow-hairline md:block">
+              <table className="w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-brand-dark/[0.06] text-[13px] text-ink-muted">
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      Nombre
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      Slug
+                    </th>
+                    <th scope="col" className="w-16 px-2 py-3">
+                      <span className="sr-only">Acciones</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-brand-dark/[0.06]">
+                  {categories.map((cat) => (
+                    <tr key={cat.id} className="transition-colors hover:bg-sunken/70">
+                      <td className="px-4 py-3 font-medium text-brand-dark">{cat.name}</td>
+                      <td className="px-4 py-3 text-ink-muted">{cat.slug}</td>
+                      <td className="px-2 py-2 text-right">
+                        <Menu label={`Acciones para ${cat.name}`} items={getMenuItems(cat)} />
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-brand-dark/[0.06] text-xs sm:text-sm">
-                    {categories.map((cat) => (
-                      <tr
-                        key={cat.id}
-                        className="hover:bg-brand-dark/[0.02] transition-colors"
-                      >
-                        <td className="py-4 px-4 font-mono text-xs text-brand-dark/50 whitespace-nowrap">
-                          #{cat.id}
-                        </td>
-                        <td className="py-4 px-4 font-semibold text-brand-dark">
-                          {cat.name}
-                        </td>
-                        <td className="py-4 px-4 whitespace-nowrap">
-                          <span className="inline-flex items-center px-2.5 py-0.5 font-mono text-xs bg-brand-dark/[0.05] text-brand-dark/80 border border-brand-dark/10 rounded-xs">
-                            {cat.slug}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4 text-right whitespace-nowrap">
-                          <div className="inline-flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditModal(cat)}
-                              className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] hover:opacity-90 rounded-xs transition-opacity cursor-pointer"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setCategoryToDelete(cat)}
-                              className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-red-800 bg-white border border-red-200 hover:bg-red-50 rounded-xs transition-colors cursor-pointer"
-                            >
-                              Eliminar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
-            {/* Mobile Scannable Cards */}
-            <div className="md:hidden space-y-3">
+            {/* Cards (< md) */}
+            <ul className="space-y-2.5 md:hidden">
               {categories.map((cat) => (
-                <div
+                <li
                   key={cat.id}
-                  className="bg-[#FAF9F6]/90 border border-brand-dark/12 p-4 rounded-xs space-y-3"
+                  className="flex items-center justify-between gap-2 rounded-card bg-white py-2 pl-4 pr-2 shadow-hairline"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-bold text-brand-dark">
-                          {cat.name}
-                        </h3>
-                        <span className="font-mono text-[11px] text-brand-dark/40">
-                          #{cat.id}
-                        </span>
-                      </div>
-                      <span className="inline-block mt-1 px-2 py-0.5 font-mono text-[11px] bg-brand-dark/[0.05] text-brand-dark/75 border border-brand-dark/10 rounded-xs">
-                        {cat.slug}
-                      </span>
-                    </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-[15px] font-semibold text-brand-dark">{cat.name}</p>
+                    <p className="truncate text-[13px] text-ink-muted">{cat.slug}</p>
                   </div>
+                  <Menu
 
-                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-brand-dark/[0.06]">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEditModal(cat)}
-                      className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs cursor-pointer"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCategoryToDelete(cat)}
-                      className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-red-800 bg-white border border-red-200 rounded-xs cursor-pointer"
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-                </div>
+                    label={`Acciones para ${cat.name}`}
+
+                    items={getMenuItems(cat)}
+
+                    trigger={({ props }) => (
+
+                      <button {...props} className="grid size-11 place-items-center rounded-full text-ink-muted transition-colors hover:bg-sunken hover:text-brand-dark">
+
+                        <Icon name="dots" size={18} />
+
+                      </button>
+
+                    )}
+
+                  />
+                </li>
               ))}
-            </div>
+            </ul>
           </>
         )}
       </div>
 
-      {/* Modal 1: Create / Edit Category */}
-      {isFormModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs overflow-y-auto"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-category-form-title"
-        >
-          <div className="bg-[#FAF9F6] border border-brand-dark/20 max-w-md w-full p-6 sm:p-7 rounded-xs shadow-lg space-y-5 my-8">
-            <div className="flex items-start justify-between gap-4 border-b border-brand-dark/[0.08] pb-4">
-              <div className="space-y-1">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-dark/50">
-                  {editingCategory
-                    ? `Editar Categoría #${editingCategory.id}`
-                    : 'Nueva Categoría'}
-                </span>
-                <h2
-                  id="modal-category-form-title"
-                  className="text-lg sm:text-xl font-bold tracking-tight text-brand-dark"
-                >
-                  {editingCategory
-                    ? `Modificar "${editingCategory.name}"`
-                    : 'Crear Categoría'}
-                </h2>
-              </div>
-              <button
-                type="button"
-                disabled={isSubmittingForm}
-                onClick={handleCloseFormModal}
-                className="text-xs font-semibold text-brand-dark/50 hover:text-brand-dark p-1 cursor-pointer"
-                aria-label="Cerrar ventana"
-              >
-                ✕
-              </button>
-            </div>
+      {/* Crear / editar categoría */}
+      <Modal
+        open={isFormModalOpen}
+        onClose={handleCloseFormModal}
+        busy={isSubmittingForm}
+        title={editingCategory ? 'Editar categoría' : 'Nueva categoría'}
+        footer={
+          <>
+            <Button variant="ghost" disabled={isSubmittingForm} onClick={handleCloseFormModal}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="category-form" loading={isSubmittingForm} loadingText="Guardando…">
+              {editingCategory ? 'Guardar cambios' : 'Crear categoría'}
+            </Button>
+          </>
+        }
+      >
+        {formModalError && (
+          <p role="alert" className="mb-4 rounded-card bg-red-50 p-3.5 text-sm text-red-900">
+            {formModalError}
+          </p>
+        )}
 
-            {formModalError && (
-              <div
-                className="p-3.5 bg-red-50 border border-red-200 rounded-xs text-xs text-red-800 space-y-1"
-                role="alert"
-              >
-                <p className="font-semibold">No se pudo guardar la categoría</p>
-                <p>{formModalError}</p>
-              </div>
-            )}
+        <form id="category-form" onSubmit={handleFormSubmit} className="space-y-4" noValidate>
+          <Field label="Nombre" required error={formFieldErrors.name} id="category-name-input">
+            <input
+              type="text"
+              maxLength={100}
+              required
+              disabled={isSubmittingForm}
+              value={nameInput}
+              onChange={handleNameChange}
+              placeholder="Ej. Tops, Bottoms, Sneakers"
+              className={inputClass}
+            />
+          </Field>
 
-            <form onSubmit={handleFormSubmit} className="space-y-4" noValidate>
-              {/* Name Input */}
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="category-name-input"
-                  className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
-                >
-                  Nombre de la categoría <span className="text-red-600">*</span>
-                </label>
-                <input
-                  id="category-name-input"
-                  type="text"
-                  maxLength={100}
-                  required
-                  disabled={isSubmittingForm}
-                  value={nameInput}
-                  onChange={handleNameChange}
-                  placeholder="Ej. Tops, Bottoms, Sneakers, Accessories"
-                  aria-invalid={formFieldErrors.name ? 'true' : undefined}
-                  className={`form-input w-full h-10 px-3 text-base sm:text-sm ${
-                    formFieldErrors.name ? 'form-input-error' : ''
-                  }`}
-                />
-                {formFieldErrors.name && (
-                  <p className="text-xs text-red-600">{formFieldErrors.name}</p>
-                )}
-              </div>
-
-              {/* Slug Input */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <label
-                    htmlFor="category-slug-input"
-                    className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
-                  >
-                    Slug URL
-                  </label>
-                  <button
-                    type="button"
-                    disabled={isSubmittingForm}
-                    onClick={handleRegenerateSlugFromName}
-                    className="text-[10px] font-semibold uppercase tracking-wider text-brand-dark/60 hover:text-brand-dark underline underline-offset-2 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
-                  >
-                    Sugerir desde nombre
-                  </button>
-                </div>
-                <input
-                  id="category-slug-input"
-                  type="text"
-                  maxLength={100}
-                  disabled={isSubmittingForm}
-                  value={slugInput}
-                  onChange={handleSlugChange}
-                  placeholder={
-                    suggestCategorySlug(nameInput) || 'ej. tops, bottoms'
-                  }
-                  aria-invalid={formFieldErrors.slug ? 'true' : undefined}
-                  className={`form-input w-full h-10 px-3 font-mono text-base sm:text-sm ${
-                    formFieldErrors.slug ? 'form-input-error' : ''
-                  }`}
-                />
-                {formFieldErrors.slug && (
-                  <p className="text-xs text-red-600">{formFieldErrors.slug}</p>
-                )}
-              </div>
-
-              {/* Resulting Slug Preview */}
-              <div className="p-3 bg-brand-dark/[0.03] border border-brand-dark/10 rounded-xs space-y-1 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-brand-dark/50">
-                    Previsualización de slug normalizado
-                  </span>
-                  <span className="font-mono font-bold text-brand-dark">
-                    {previewSlug || '—'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-brand-dark/50 leading-relaxed">
-                  El servidor elimina tildes, convierte a minúsculas y reemplaza
-                  espacios o símbolos por guiones automáticamente.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  disabled={isSubmittingForm}
-                  onClick={handleCloseFormModal}
-                  className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark border border-brand-dark/20 bg-white hover:bg-brand-dark/[0.04] rounded-xs cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingForm}
-                  className={`px-5 py-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] rounded-xs transition-opacity ${
-                    isSubmittingForm
-                      ? 'bg-brand-dark/40 cursor-not-allowed'
-                      : 'bg-brand-dark hover:opacity-90 cursor-pointer'
-                  }`}
-                >
-                  {isSubmittingForm
-                    ? 'Guardando...'
-                    : editingCategory
-                    ? 'Guardar cambios'
-                    : 'Crear categoría'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 2: Delete Category Confirmation */}
-      {categoryToDelete && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-delete-category-title"
-        >
-          <div className="bg-[#FAF9F6] border border-brand-dark/20 max-w-md w-full p-6 sm:p-7 rounded-xs shadow-lg space-y-5">
-            <div className="space-y-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-red-700">
-                Confirmar eliminación
-              </span>
-              <h3
-                id="modal-delete-category-title"
-                className="text-lg font-bold tracking-tight text-brand-dark"
-              >
-                ¿Eliminar la categoría &ldquo;{categoryToDelete.name}&rdquo;?
-              </h3>
-              <p className="text-xs sm:text-sm text-brand-dark/70 leading-relaxed">
-                Estás por eliminar la categoría{' '}
-                <strong className="font-semibold text-brand-dark">
-                  {categoryToDelete.name}
-                </strong>{' '}
-                (slug:{' '}
-                <code className="font-mono">{categoryToDelete.slug}</code>). Si
-                la categoría tiene productos activos o inactivos asociados, el
-                servidor impedirá su eliminación para proteger la integridad del
-                catálogo.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                disabled={isDeleting}
-                onClick={() => setCategoryToDelete(null)}
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark border border-brand-dark/20 bg-white hover:bg-brand-dark/[0.04] rounded-xs cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={isDeleting}
-                onClick={handleConfirmDelete}
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white bg-red-700 hover:bg-red-800 rounded-xs cursor-pointer"
-              >
-                {isDeleting ? 'Eliminando...' : 'Sí, eliminar categoría'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          <Field
+            label="Slug (URL)"
+            error={formFieldErrors.slug}
+            id="category-slug-input"
+            hint={
+              <>
+                Queda como <strong className="font-semibold text-brand-dark">{previewSlug || '—'}</strong>. Se quitan
+                tildes y se reemplazan espacios o símbolos por guiones.
+              </>
+            }
+          >
+            <input
+              type="text"
+              maxLength={100}
+              disabled={isSubmittingForm}
+              value={slugInput}
+              onChange={handleSlugChange}
+              placeholder={suggestCategorySlug(nameInput) || 'ej. tops, bottoms'}
+              className={inputClass}
+            />
+          </Field>
+          <button
+            type="button"
+            disabled={isSubmittingForm}
+            onClick={handleRegenerateSlugFromName}
+            className="-mt-2 inline-flex min-h-11 items-center text-sm font-medium text-brand-dark underline underline-offset-4 disabled:opacity-50"
+          >
+            Sugerir desde el nombre
+          </button>
+        </form>
+      </Modal>
     </AdminShell>
   );
 }
-

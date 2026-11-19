@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import AdminShell from './AdminShell';
+import Button from './ui/Button';
+import PageHeader from './ui/PageHeader';
+import EmptyState from './ui/EmptyState';
+import ErrorState from './ui/ErrorState';
+import ListSkeleton from './ui/ListSkeleton';
+import { toast } from './ui/Toast';
 import {
   fetchAdminNavigationSections,
   createAdminNavigationSection,
@@ -38,6 +44,20 @@ export default function AdminNavigationView() {
   // Page feedback banners
   const [successMessage, setSuccessMessage] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
+
+  // Las notificaciones puras se muestran como toast (la lógica sigue usando estos estados)
+  useEffect(() => {
+    if (successMessage) {
+      toast.success(successMessage);
+      setSuccessMessage(null);
+    }
+  }, [successMessage]);
+  useEffect(() => {
+    if (errorMessage) {
+      toast.error(errorMessage);
+      setErrorMessage(null);
+    }
+  }, [errorMessage]);
   const [conflictWarning, setConflictWarning] = useState(null);
 
   // In-flight action trackers
@@ -836,92 +856,46 @@ export default function AdminNavigationView() {
   return (
     <AdminShell activeSection="navigation">
       <div className="space-y-6">
-        {/* Top Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-brand-dark/[0.08]">
-          <div className="space-y-1">
-            <span className="text-[11px] font-mono uppercase tracking-[0.2em] text-brand-dark/50">
-              Navegación & Identidad Comercial
+        <PageHeader
+          title="Navegación"
+          subtitle={
+            <span title="Límite máximo de secciones visibles en el navbar: 5">
+              Secciones visibles: {visibleSectionsCount} / {MAX_VISIBLE_SECTIONS}
+              {visibleSectionsCount >= MAX_VISIBLE_SECTIONS ? ' (límite alcanzado)' : ''}
             </span>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-brand-dark">
-                Navbar Navigation Editor
-              </h1>
-              <span
-                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold tracking-wider font-mono ${visibleSectionsCount >= MAX_VISIBLE_SECTIONS
-                    ? 'bg-amber-100 text-amber-800'
-                    : 'bg-brand-dark/[0.06] text-brand-dark/80'
-                  }`}
-                title="Límite máximo de secciones visibles en el navbar: 5"
-              >
-                Secciones visibles: {visibleSectionsCount} / {MAX_VISIBLE_SECTIONS}
+          }
+          actions={
+            <>
+              <span className="hidden sm:block">
+                <Button
+                  href="/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="secondary"
+                  size="sm"
+                  className="lg:min-h-10"
+                >
+                  Ver tienda ↗
+                </Button>
               </span>
-            </div>
-            <p className="text-xs text-brand-dark/60 max-w-2xl">
-              Administrá la barra de navegación del mega-menu y móvil. La configuración guardada
-              aquí determina en tiempo real el menú visible para los clientes.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={loadData}
-              disabled={isLoading}
-              className="px-3 py-2 text-xs font-medium text-brand-dark/70 hover:text-brand-dark border border-brand-dark/15 hover:border-brand-dark/30 rounded-xs transition-colors cursor-pointer"
-            >
-              {isLoading ? 'Actualizando...' : 'Actualizar'}
-            </button>
-            <a
-              href="/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3 py-2 text-xs font-medium text-brand-dark/70 hover:text-brand-dark border border-brand-dark/15 hover:border-brand-dark/30 rounded-xs transition-colors"
-            >
-              Ver Tienda ↗
-            </a>
-            <button
-              type="button"
-              onClick={handleOpenCreateSectionModal}
-              className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] hover:bg-brand-dark/90 rounded-xs transition-all shadow-xs cursor-pointer inline-flex items-center gap-1.5"
-            >
-              <span>+ Nueva sección</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Global Feedback Banners */}
-        {successMessage && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xs text-xs flex items-center justify-between animate-fadeIn">
-            <span>{successMessage}</span>
-            <button
-              type="button"
-              onClick={() => setSuccessMessage(null)}
-              className="text-emerald-600 hover:text-emerald-900 font-bold ml-2"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {errorMessage && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xs text-xs flex items-center justify-between animate-fadeIn">
-            <span>{errorMessage}</span>
-            <button
-              type="button"
-              onClick={() => setErrorMessage(null)}
-              className="text-red-600 hover:text-red-900 font-bold ml-2"
-            >
-              ✕
-            </button>
-          </div>
-        )}
+              <Button size="sm" className="lg:min-h-10" onClick={handleOpenCreateSectionModal}>
+                <span className="whitespace-nowrap">
+                  + Nueva<span className="hidden sm:inline"> sección</span>
+                </span>
+              </Button>
+            </>
+          }
+        />
+        <p className="-mt-3 max-w-2xl text-sm text-ink-muted">
+          Armá la barra de navegación del mega-menú y del menú móvil. Lo que guardás acá lo ven los clientes en la tienda.
+        </p>
 
         {conflictWarning && (
-          <div className="p-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-xs text-xs space-y-1 animate-fadeIn">
+          <div className="p-4 bg-white text-brand-dark rounded-card text-sm space-y-1 shadow-hairline animate-fadeIn">
             <div className="flex items-center justify-between font-semibold">
               <span className="flex items-center gap-1.5">
                 <svg
-                  className="w-4 h-4 text-amber-600"
+                  className="w-4 h-4 text-brand-dark"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -933,12 +907,12 @@ export default function AdminNavigationView() {
                     d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
                   />
                 </svg>
-                Restricción de Límites del Navbar
+                Límite del navbar
               </span>
               <button
                 type="button"
                 onClick={() => setConflictWarning(null)}
-                className="text-amber-700 hover:text-amber-950 font-bold"
+                className="text-amber-700 hover:text-amber-950 font-semibold"
               >
                 ✕
               </button>
@@ -947,52 +921,19 @@ export default function AdminNavigationView() {
           </div>
         )}
 
-        {/* Loading Skeleton */}
-        {isLoading && sections.length === 0 && (
-          <div className="space-y-4 py-8">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-28 bg-brand-dark/[0.04] rounded-xs animate-pulse border border-brand-dark/[0.06]"
-              />
-            ))}
-          </div>
-        )}
+        {isLoading && sections.length === 0 && <ListSkeleton rows={3} rowClassName="h-24" />}
 
-        {/* Error on initial load */}
         {loadError && sections.length === 0 && (
-          <div className="p-6 bg-red-50 border border-red-200 text-red-800 rounded-xs text-center space-y-3">
-            <p className="text-sm font-semibold">{loadError}</p>
-            <button
-              type="button"
-              onClick={loadData}
-              className="px-4 py-2 text-xs font-semibold uppercase tracking-wider bg-red-700 text-white rounded-xs hover:bg-red-800 cursor-pointer"
-            >
-              Reintentar carga
-            </button>
-          </div>
+          <ErrorState title="No pudimos cargar la navegación" message={loadError} onRetry={loadData} retryLabel="Reintentar carga" />
         )}
 
-        {/* Empty state: No sections configured */}
         {!isLoading && !loadError && sections.length === 0 && (
-          <div className="p-8 sm:p-12 text-center bg-white border border-brand-dark/[0.08] rounded-xs space-y-4">
-            <span className="text-xs font-mono uppercase tracking-[0.2em] text-brand-dark/40">
-              Menú Vacío
-            </span>
-            <h3 className="text-base font-semibold text-brand-dark">
-              No hay secciones configuradas en la barra de navegación
-            </h3>
-            <p className="text-xs sm:text-sm text-brand-dark/60 max-w-md mx-auto">
-              Creá tu primera sección para estructurar el mega-menu desktop y la navegación móvil.
-            </p>
-            <button
-              type="button"
-              onClick={handleOpenCreateSectionModal}
-              className="px-4 py-2 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs hover:bg-brand-dark/90 cursor-pointer"
-            >
-              + Crear primera sección
-            </button>
-          </div>
+          <EmptyState
+            icon="list"
+            title="El menú está vacío"
+            description="Creá tu primera sección para armar el mega-menú de escritorio y la navegación móvil."
+            action={<Button onClick={handleOpenCreateSectionModal}>+ Crear primera sección</Button>}
+          />
         )}
 
         {/* Sections Listing */}
@@ -1018,10 +959,7 @@ export default function AdminNavigationView() {
               return (
                 <div
                   key={section.id}
-                  className={`border transition-all duration-200 rounded-xs bg-white ${section.isVisible
-                      ? 'border-brand-dark/[0.12] shadow-2xs'
-                      : 'border-brand-dark/[0.06] bg-brand-dark/[0.015] opacity-90'
-                    }`}
+                  className={`transition-all duration-200 rounded-card bg-white shadow-hairline ${section.isVisible ? '' : 'opacity-80' }`}
                 >
                   {/* Section Header Card */}
                   <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1034,7 +972,7 @@ export default function AdminNavigationView() {
                           onClick={() => handleMoveSection(sectionIdx, -1)}
                           disabled={sectionIdx === 0 || isReorderingSections}
                           title="Subir sección en el menú"
-                          className="w-7 h-7 flex items-center justify-center border border-brand-dark/15 rounded-xs text-brand-dark/70 hover:text-brand-dark hover:bg-brand-dark/[0.04] disabled:opacity-30 disabled:pointer-events-none cursor-pointer text-xs"
+                          className="size-10 flex items-center justify-center rounded-full bg-white shadow-hairline text-ink-muted hover:text-brand-dark hover:shadow-card disabled:opacity-30 disabled:pointer-events-none cursor-pointer text-xs"
                         >
                           ▲
                         </button>
@@ -1043,7 +981,7 @@ export default function AdminNavigationView() {
                           onClick={() => handleMoveSection(sectionIdx, 1)}
                           disabled={sectionIdx === sections.length - 1 || isReorderingSections}
                           title="Bajar sección en el menú"
-                          className="w-7 h-7 flex items-center justify-center border border-brand-dark/15 rounded-xs text-brand-dark/70 hover:text-brand-dark hover:bg-brand-dark/[0.04] disabled:opacity-30 disabled:pointer-events-none cursor-pointer text-xs"
+                          className="size-10 flex items-center justify-center rounded-full bg-white shadow-hairline text-ink-muted hover:text-brand-dark hover:shadow-card disabled:opacity-30 disabled:pointer-events-none cursor-pointer text-xs"
                         >
                           ▼
                         </button>
@@ -1055,26 +993,23 @@ export default function AdminNavigationView() {
                           <span className="text-sm sm:text-base font-semibold text-brand-dark">
                             {section.label}
                           </span>
-                          <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 rounded-xs bg-brand-dark/[0.06] text-brand-dark/70">
-                            código: {section.code}
+                          <span className="text-xs px-1.5 py-0.5 rounded-ctl bg-brand-dark/[0.06] text-ink-muted">
+                            Código: {section.code}
                           </span>
                           {isBrands && (
-                            <span className="font-mono text-[10px] uppercase px-2 py-0.5 rounded-xs bg-brand-dark text-[#FAFAFA]">
-                              Sección Oficial Brands
+                            <span className="text-xs px-2 py-0.5 rounded-ctl bg-brand-dark text-brand-light">
+                              Sección de marcas
                             </span>
                           )}
                           <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider font-mono ${section.isVisible
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-gray-100 text-gray-600'
-                              }`}
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${section.isVisible ? 'bg-sunken text-brand-dark' : 'bg-sunken text-ink-muted' }`}
                           >
-                            {section.isVisible ? '● Visible en Navbar' : '○ Oculta'}
+                            {section.isVisible ? 'Visible en el navbar' : 'Oculta'}
                           </span>
                         </div>
 
                         {/* Subtitle / Counters */}
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-brand-dark/60">
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-ink-muted">
                           {isBrands ? (
                             <>
                               <span className="font-medium text-brand-dark">
@@ -1101,10 +1036,7 @@ export default function AdminNavigationView() {
                         type="button"
                         onClick={() => handleToggleSectionStatus(section)}
                         disabled={statusUpdatingSectionId === section.id}
-                        className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-xs border transition-colors cursor-pointer ${section.isVisible
-                            ? 'border-amber-300 text-amber-800 hover:bg-amber-50'
-                            : 'border-emerald-300 text-emerald-800 hover:bg-emerald-50'
-                          } disabled:opacity-50`}
+                        className={`px-3 py-1.5.5 text-xs font-semibold rounded-full transition-colors cursor-pointer ${section.isVisible ? ' text-brand-dark hover:shadow-card' : ' text-brand-dark hover:shadow-card' } disabled:opacity-50 bg-white shadow-hairline inline-flex items-center justify-center min-h-10`}
                       >
                         {statusUpdatingSectionId === section.id
                           ? 'Actualizando...'
@@ -1117,7 +1049,7 @@ export default function AdminNavigationView() {
                       <button
                         type="button"
                         onClick={() => handleOpenEditSectionModal(section)}
-                        className="px-3 py-1.5 text-xs font-semibold text-brand-dark/75 hover:text-brand-dark border border-brand-dark/15 hover:border-brand-dark/30 rounded-xs transition-colors cursor-pointer"
+                        className="px-3 py-1.5.5 text-xs font-semibold text-brand-dark hover:text-brand-dark rounded-full transition-colors cursor-pointer bg-white shadow-hairline inline-flex items-center justify-center min-h-10"
                       >
                         Editar
                       </button>
@@ -1126,7 +1058,7 @@ export default function AdminNavigationView() {
                       <button
                         type="button"
                         onClick={() => handleOpenDeleteSectionModal(section)}
-                        className="px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:text-red-800 border border-red-200 hover:bg-red-50 rounded-xs transition-colors cursor-pointer"
+                        className="px-2.5 py-1.5.5 text-xs font-semibold text-red-800 hover:text-red-800 hover:shadow-card rounded-full transition-colors cursor-pointer bg-white shadow-hairline inline-flex items-center justify-center min-h-10"
                         title="Eliminar sección del navbar"
                       >
                         Eliminar
@@ -1136,13 +1068,12 @@ export default function AdminNavigationView() {
                       <button
                         type="button"
                         onClick={() => toggleSectionExpansion(section.id)}
-                        className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-brand-dark/[0.06] hover:bg-brand-dark/[0.1] text-brand-dark rounded-xs transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                        className="px-3 py-1.5.5 text-xs font-semibold bg-brand-dark/[0.06] hover:bg-brand-dark/[0.1] text-brand-dark rounded-full transition-colors cursor-pointer inline-flex items-center gap-1.5 min-h-10"
                       >
                         <span>{isExpanded ? 'Contraer' : 'Gestionar'}</span>
-                        <span className="text-[10px]">({items.length})</span>
+                        <span className="text-xs">({items.length})</span>
                         <svg
-                          className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''
-                            }`}
+                          className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : '' }`}
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -1160,24 +1091,24 @@ export default function AdminNavigationView() {
 
                   {/* Section Items Panel (Nivel B) */}
                   {isExpanded && (
-                    <div className="border-t border-brand-dark/[0.08] bg-[#FAFAFA]/70 p-4 sm:p-6 space-y-6">
+                    <div className="border-t border-brand-dark/[0.08] bg-sunken/60 p-4 sm:p-6 space-y-6 rounded-b-card">
                       {/* Brands Section Custom Layout */}
                       {isBrands ? (
                         <div className="space-y-6">
                           {/* Brands Explanatory Box */}
-                          <div className="p-4 bg-white border border-brand-dark/[0.08] rounded-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                          <div className="p-4 bg-white rounded-card flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-hairline">
                             <div className="space-y-1">
                               <p className="font-semibold text-brand-dark">
                                 Distribución visual de Marcas en el Mega-Menu
                               </p>
-                              <p className="text-brand-dark/60">
+                              <p className="text-ink-muted">
                                 Máximo 8 marcas visibles divididas en dos columnas (hasta 4 marcas por columna). Solo se mostrarán en la tienda aquellas marcas con al menos un producto activo asociado.
                               </p>
                             </div>
                             <button
                               type="button"
                               onClick={() => handleOpenAddItemModal(section, 0)}
-                              className="px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs hover:bg-brand-dark/90 transition-all shrink-0 cursor-pointer inline-flex items-center gap-1"
+                              className="px-3 py-1.5 text-xs font-semibold bg-brand-dark text-brand-light rounded-full hover:bg-ink-soft transition-all shrink-0 cursor-pointer inline-flex items-center gap-1 min-h-10"
                             >
                               <span>+ Agregar marca</span>
                             </button>
@@ -1186,13 +1117,13 @@ export default function AdminNavigationView() {
                           {/* 2-Columns Visual Grid for Brands */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {/* Column 0: Columna 1 */}
-                            <div className="space-y-3 p-4 bg-white border border-brand-dark/[0.08] rounded-xs">
+                            <div className="space-y-3 p-4 bg-white rounded-card shadow-hairline">
                               <div className="flex items-center justify-between pb-2 border-b border-brand-dark/[0.06]">
                                 <div>
-                                  <h4 className="text-xs font-bold uppercase tracking-wider text-brand-dark">
+                                  <h4 className="text-xs font-semibold text-brand-dark">
                                     Columna 1 (Featured)
                                   </h4>
-                                  <span className="text-[11px] text-brand-dark/50">
+                                  <span className="text-xs text-ink-muted">
                                     {col0Brands} / {MAX_VISIBLE_BRANDS_PER_COLUMN} marcas visibles
                                   </span>
                                 </div>
@@ -1207,7 +1138,7 @@ export default function AdminNavigationView() {
 
                               {/* Items in Column 0 */}
                               {items.filter((it) => it.columnIndex === 0).length === 0 ? (
-                                <p className="text-xs text-brand-dark/40 py-4 text-center italic">
+                                <p className="text-xs text-ink-muted py-4 text-center italic">
                                   No hay marcas asignadas a la Columna 1.
                                 </p>
                               ) : (
@@ -1218,10 +1149,7 @@ export default function AdminNavigationView() {
                                     .map((item, itemIdx, arr) => (
                                       <div
                                         key={item.id}
-                                        className={`p-2.5 rounded-xs border text-xs flex items-center justify-between gap-2 ${item.isVisible
-                                            ? 'bg-white border-brand-dark/[0.1]'
-                                            : 'bg-brand-dark/[0.02] border-brand-dark/[0.05] opacity-75'
-                                          }`}
+                                        className={`p-2.5 rounded-ctl text-xs flex flex-wrap items-center justify-between gap-2 ${item.isVisible ? 'bg-white ' : 'bg-brand-dark/[0.02] opacity-75' } shadow-hairline`}
                                       >
                                         {/* Left: Reorder & Name */}
                                         <div className="flex items-center gap-2 min-w-0">
@@ -1230,7 +1158,7 @@ export default function AdminNavigationView() {
                                               type="button"
                                               onClick={() => handleMoveItemPosition(section, item, -1)}
                                               disabled={itemIdx === 0 || reorderingSectionId === section.id}
-                                              className="text-[10px] text-brand-dark/50 hover:text-brand-dark disabled:opacity-20 cursor-pointer"
+                                              className="grid size-9 place-items-center rounded-full text-xs text-ink-muted hover:bg-sunken hover:text-brand-dark disabled:opacity-20 cursor-pointer"
                                               title="Subir"
                                             >
                                               ▲
@@ -1239,7 +1167,7 @@ export default function AdminNavigationView() {
                                               type="button"
                                               onClick={() => handleMoveItemPosition(section, item, 1)}
                                               disabled={itemIdx === arr.length - 1 || reorderingSectionId === section.id}
-                                              className="text-[10px] text-brand-dark/50 hover:text-brand-dark disabled:opacity-20 cursor-pointer"
+                                              className="grid size-9 place-items-center rounded-full text-xs text-ink-muted hover:bg-sunken hover:text-brand-dark disabled:opacity-20 cursor-pointer"
                                               title="Bajar"
                                             >
                                               ▼
@@ -1252,15 +1180,12 @@ export default function AdminNavigationView() {
                                                 {item.brandName || item.label}
                                               </span>
                                               <span
-                                                className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded-full ${item.isVisible
-                                                    ? 'bg-emerald-100 text-emerald-800'
-                                                    : 'bg-gray-100 text-gray-600'
-                                                  }`}
+                                                className={`text-xs px-1.5 py-0.5 rounded-full ${item.isVisible ? 'bg-sunken text-brand-dark' : 'bg-sunken text-ink-muted' }`}
                                               >
                                                 {item.isVisible ? 'Visible' : 'Oculta'}
                                               </span>
                                             </div>
-                                            <span className="font-mono text-[10px] text-brand-dark/40 block truncate">
+                                            <span className="text-xs text-ink-muted block truncate">
                                               /?brand={item.brandSlug}#catalogo
                                             </span>
                                           </div>
@@ -1272,7 +1197,7 @@ export default function AdminNavigationView() {
                                             type="button"
                                             onClick={() => handleMoveItemColumn(section, item, 1)}
                                             title="Mover a Columna 2"
-                                            className="px-2 py-1 text-[11px] font-medium border border-brand-dark/15 rounded-xs hover:bg-brand-dark/[0.04] cursor-pointer"
+                                            className="px-2 py-1.5 text-xs font-medium rounded-full hover:bg-brand-dark/[0.04] cursor-pointer bg-white shadow-hairline inline-flex items-center justify-center min-h-10"
                                           >
                                             → Col 2
                                           </button>
@@ -1280,14 +1205,14 @@ export default function AdminNavigationView() {
                                             type="button"
                                             onClick={() => handleToggleItemStatus(section, item)}
                                             disabled={statusUpdatingItemId === item.id}
-                                            className="px-2 py-1 text-[11px] font-medium border border-brand-dark/15 rounded-xs hover:bg-brand-dark/[0.04] cursor-pointer"
+                                            className="px-2 py-1.5 text-xs font-medium rounded-full hover:bg-brand-dark/[0.04] cursor-pointer bg-white shadow-hairline inline-flex items-center justify-center min-h-10"
                                           >
                                             {item.isVisible ? 'Ocultar' : 'Mostrar'}
                                           </button>
                                           <button
                                             type="button"
                                             onClick={() => handleOpenDeleteItemModal(section, item)}
-                                            className="px-1.5 py-1 text-[11px] text-red-600 hover:text-red-800 cursor-pointer"
+                                            aria-label="Quitar del menú" className="grid size-10 place-items-center rounded-full text-sm text-red-800 hover:bg-red-50 cursor-pointer"
                                             title="Quitar del menú"
                                           >
                                             ✕
@@ -1300,13 +1225,13 @@ export default function AdminNavigationView() {
                             </div>
 
                             {/* Column 1: Columna 2 */}
-                            <div className="space-y-3 p-4 bg-white border border-brand-dark/[0.08] rounded-xs">
+                            <div className="space-y-3 p-4 bg-white rounded-card shadow-hairline">
                               <div className="flex items-center justify-between pb-2 border-b border-brand-dark/[0.06]">
                                 <div>
-                                  <h4 className="text-xs font-bold uppercase tracking-wider text-brand-dark">
+                                  <h4 className="text-xs font-semibold text-brand-dark">
                                     Columna 2 (Explore)
                                   </h4>
-                                  <span className="text-[11px] text-brand-dark/50">
+                                  <span className="text-xs text-ink-muted">
                                     {col1Brands} / {MAX_VISIBLE_BRANDS_PER_COLUMN} marcas visibles
                                   </span>
                                 </div>
@@ -1321,7 +1246,7 @@ export default function AdminNavigationView() {
 
                               {/* Items in Column 1 */}
                               {items.filter((it) => it.columnIndex === 1).length === 0 ? (
-                                <p className="text-xs text-brand-dark/40 py-4 text-center italic">
+                                <p className="text-xs text-ink-muted py-4 text-center italic">
                                   No hay marcas asignadas a la Columna 2.
                                 </p>
                               ) : (
@@ -1332,10 +1257,7 @@ export default function AdminNavigationView() {
                                     .map((item, itemIdx, arr) => (
                                       <div
                                         key={item.id}
-                                        className={`p-2.5 rounded-xs border text-xs flex items-center justify-between gap-2 ${item.isVisible
-                                            ? 'bg-white border-brand-dark/[0.1]'
-                                            : 'bg-brand-dark/[0.02] border-brand-dark/[0.05] opacity-75'
-                                          }`}
+                                        className={`p-2.5 rounded-ctl text-xs flex flex-wrap items-center justify-between gap-2 ${item.isVisible ? 'bg-white ' : 'bg-brand-dark/[0.02] opacity-75' } shadow-hairline`}
                                       >
                                         {/* Left: Reorder & Name */}
                                         <div className="flex items-center gap-2 min-w-0">
@@ -1344,7 +1266,7 @@ export default function AdminNavigationView() {
                                               type="button"
                                               onClick={() => handleMoveItemPosition(section, item, -1)}
                                               disabled={itemIdx === 0 || reorderingSectionId === section.id}
-                                              className="text-[10px] text-brand-dark/50 hover:text-brand-dark disabled:opacity-20 cursor-pointer"
+                                              className="grid size-9 place-items-center rounded-full text-xs text-ink-muted hover:bg-sunken hover:text-brand-dark disabled:opacity-20 cursor-pointer"
                                               title="Subir"
                                             >
                                               ▲
@@ -1353,7 +1275,7 @@ export default function AdminNavigationView() {
                                               type="button"
                                               onClick={() => handleMoveItemPosition(section, item, 1)}
                                               disabled={itemIdx === arr.length - 1 || reorderingSectionId === section.id}
-                                              className="text-[10px] text-brand-dark/50 hover:text-brand-dark disabled:opacity-20 cursor-pointer"
+                                              className="grid size-9 place-items-center rounded-full text-xs text-ink-muted hover:bg-sunken hover:text-brand-dark disabled:opacity-20 cursor-pointer"
                                               title="Bajar"
                                             >
                                               ▼
@@ -1366,15 +1288,12 @@ export default function AdminNavigationView() {
                                                 {item.brandName || item.label}
                                               </span>
                                               <span
-                                                className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded-full ${item.isVisible
-                                                    ? 'bg-emerald-100 text-emerald-800'
-                                                    : 'bg-gray-100 text-gray-600'
-                                                  }`}
+                                                className={`text-xs px-1.5 py-0.5 rounded-full ${item.isVisible ? 'bg-sunken text-brand-dark' : 'bg-sunken text-ink-muted' }`}
                                               >
                                                 {item.isVisible ? 'Visible' : 'Oculta'}
                                               </span>
                                             </div>
-                                            <span className="font-mono text-[10px] text-brand-dark/40 block truncate">
+                                            <span className="text-xs text-ink-muted block truncate">
                                               /?brand={item.brandSlug}#catalogo
                                             </span>
                                           </div>
@@ -1386,7 +1305,7 @@ export default function AdminNavigationView() {
                                             type="button"
                                             onClick={() => handleMoveItemColumn(section, item, 0)}
                                             title="Mover a Columna 1"
-                                            className="px-2 py-1 text-[11px] font-medium border border-brand-dark/15 rounded-xs hover:bg-brand-dark/[0.04] cursor-pointer"
+                                            className="px-2 py-1.5 text-xs font-medium rounded-full hover:bg-brand-dark/[0.04] cursor-pointer bg-white shadow-hairline inline-flex items-center justify-center min-h-10"
                                           >
                                             ← Col 1
                                           </button>
@@ -1394,14 +1313,14 @@ export default function AdminNavigationView() {
                                             type="button"
                                             onClick={() => handleToggleItemStatus(section, item)}
                                             disabled={statusUpdatingItemId === item.id}
-                                            className="px-2 py-1 text-[11px] font-medium border border-brand-dark/15 rounded-xs hover:bg-brand-dark/[0.04] cursor-pointer"
+                                            className="px-2 py-1.5 text-xs font-medium rounded-full hover:bg-brand-dark/[0.04] cursor-pointer bg-white shadow-hairline inline-flex items-center justify-center min-h-10"
                                           >
                                             {item.isVisible ? 'Ocultar' : 'Mostrar'}
                                           </button>
                                           <button
                                             type="button"
                                             onClick={() => handleOpenDeleteItemModal(section, item)}
-                                            className="px-1.5 py-1 text-[11px] text-red-600 hover:text-red-800 cursor-pointer"
+                                            aria-label="Quitar del menú" className="grid size-10 place-items-center rounded-full text-sm text-red-800 hover:bg-red-50 cursor-pointer"
                                             title="Quitar del menú"
                                           >
                                             ✕
@@ -1422,22 +1341,22 @@ export default function AdminNavigationView() {
                               <h4 className="text-xs font-semibold text-brand-dark">
                                 Elementos configurados en {section.label}
                               </h4>
-                              <p className="text-[11px] text-brand-dark/50">
+                              <p className="text-xs text-ink-muted">
                                 Podés agregar categorías existentes o enlaces personalizados organizados por columnas.
                               </p>
                             </div>
                             <button
                               type="button"
                               onClick={() => handleOpenAddItemModal(section, 0)}
-                              className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs hover:bg-brand-dark/90 transition-all cursor-pointer"
+                              className="px-3 py-1.5.5 text-xs font-semibold bg-brand-dark text-brand-light rounded-full hover:bg-ink-soft transition-all cursor-pointer inline-flex items-center justify-center min-h-10"
                             >
                               + Agregar elemento
                             </button>
                           </div>
 
                           {items.length === 0 ? (
-                            <div className="p-6 bg-white border border-brand-dark/[0.06] rounded-xs text-center space-y-2">
-                              <p className="text-xs text-brand-dark/50">
+                            <div className="p-6 bg-white rounded-card text-center space-y-2 shadow-hairline">
+                              <p className="text-xs text-ink-muted">
                                 Esta sección no tiene elementos asignados actualmente.
                               </p>
                               <button
@@ -1468,10 +1387,7 @@ export default function AdminNavigationView() {
                                   return (
                                     <div
                                       key={item.id}
-                                      className={`p-3 rounded-xs border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${item.isVisible
-                                          ? 'bg-white border-brand-dark/[0.1]'
-                                          : 'bg-brand-dark/[0.02] border-brand-dark/[0.05] opacity-75'
-                                        }`}
+                                      className={`p-3 rounded-ctl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${item.isVisible ? 'bg-white ' : 'bg-brand-dark/[0.02] opacity-75' } shadow-hairline`}
                                     >
                                       {/* Left: Type badge & labels */}
                                       <div className="flex items-center gap-3 min-w-0">
@@ -1480,7 +1396,7 @@ export default function AdminNavigationView() {
                                             type="button"
                                             onClick={() => handleMoveItemPosition(section, item, -1)}
                                             disabled={itemIdx === 0 || reorderingSectionId === section.id}
-                                            className="text-[10px] text-brand-dark/50 hover:text-brand-dark disabled:opacity-20 cursor-pointer"
+                                            className="grid size-9 place-items-center rounded-full text-xs text-ink-muted hover:bg-sunken hover:text-brand-dark disabled:opacity-20 cursor-pointer"
                                             title="Subir orden"
                                           >
                                             ▲
@@ -1489,7 +1405,7 @@ export default function AdminNavigationView() {
                                             type="button"
                                             onClick={() => handleMoveItemPosition(section, item, 1)}
                                             disabled={itemIdx === arr.length - 1 || reorderingSectionId === section.id}
-                                            className="text-[10px] text-brand-dark/50 hover:text-brand-dark disabled:opacity-20 cursor-pointer"
+                                            className="grid size-9 place-items-center rounded-full text-xs text-ink-muted hover:bg-sunken hover:text-brand-dark disabled:opacity-20 cursor-pointer"
                                             title="Bajar orden"
                                           >
                                             ▼
@@ -1501,7 +1417,7 @@ export default function AdminNavigationView() {
                                             <span className="font-semibold text-brand-dark">
                                               {item.label || item.categoryName || item.brandName}
                                             </span>
-                                            <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded-xs bg-brand-dark/[0.06] text-brand-dark/70">
+                                            <span className="text-xs px-1.5 py-0.5 rounded-ctl bg-brand-dark/[0.06] text-ink-muted">
                                               {item.targetType === 'CATEGORY'
                                                 ? 'Categoría'
                                                 : item.targetType === 'CUSTOM_LINK'
@@ -1510,19 +1426,16 @@ export default function AdminNavigationView() {
                                                     ? 'Filtro'
                                                     : 'Marca'}
                                             </span>
-                                            <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded-xs bg-brand-dark/[0.04] text-brand-dark/60">
+                                            <span className="text-xs px-1.5 py-0.5 rounded-ctl bg-brand-dark/[0.04] text-ink-muted">
                                               Columna {item.columnIndex + 1}
                                             </span>
                                             <span
-                                              className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded-full ${item.isVisible
-                                                  ? 'bg-emerald-100 text-emerald-800'
-                                                  : 'bg-gray-100 text-gray-600'
-                                                }`}
+                                              className={`text-xs px-1.5 py-0.5 rounded-full ${item.isVisible ? 'bg-sunken text-brand-dark' : 'bg-sunken text-ink-muted' }`}
                                             >
                                               {item.isVisible ? 'Visible' : 'Oculto'}
                                             </span>
                                           </div>
-                                          <span className="font-mono text-[10px] text-brand-dark/45 block truncate">
+                                          <span className="text-xs text-ink-muted block truncate">
                                             Destino: {targetHref}
                                           </span>
                                         </div>
@@ -1533,7 +1446,7 @@ export default function AdminNavigationView() {
                                         <button
                                           type="button"
                                           onClick={() => handleOpenEditItemModal(section, item)}
-                                          className="px-2.5 py-1 text-[11px] font-medium border border-brand-dark/15 rounded-xs hover:bg-brand-dark/[0.04] cursor-pointer"
+                                          className="px-2.5 py-1.5 text-xs font-medium rounded-full hover:bg-brand-dark/[0.04] cursor-pointer bg-white shadow-hairline inline-flex items-center justify-center min-h-10"
                                         >
                                           Editar
                                         </button>
@@ -1541,14 +1454,14 @@ export default function AdminNavigationView() {
                                           type="button"
                                           onClick={() => handleToggleItemStatus(section, item)}
                                           disabled={statusUpdatingItemId === item.id}
-                                          className="px-2.5 py-1 text-[11px] font-medium border border-brand-dark/15 rounded-xs hover:bg-brand-dark/[0.04] cursor-pointer"
+                                          className="px-2.5 py-1.5 text-xs font-medium rounded-full hover:bg-brand-dark/[0.04] cursor-pointer bg-white shadow-hairline inline-flex items-center justify-center min-h-10"
                                         >
                                           {item.isVisible ? 'Ocultar' : 'Mostrar'}
                                         </button>
                                         <button
                                           type="button"
                                           onClick={() => handleOpenDeleteItemModal(section, item)}
-                                          className="px-2 py-1 text-[11px] text-red-600 hover:text-red-800 border border-red-200 hover:bg-red-50 rounded-xs cursor-pointer"
+                                          className="px-2 py-1.5 text-xs text-red-800 hover:text-red-800 hover:shadow-card rounded-full cursor-pointer bg-white shadow-hairline inline-flex items-center justify-center min-h-10"
                                           title="Eliminar elemento del menú"
                                         >
                                           Eliminar
@@ -1577,27 +1490,27 @@ export default function AdminNavigationView() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-dark/50 backdrop-blur-xs animate-fadeIn"
+          className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-brand-dark/45 animate-fadeIn sm:items-center sm:p-4"
         >
-          <div className="bg-white border border-brand-dark/[0.12] rounded-xs shadow-xl w-full max-w-md p-6 space-y-5">
+          <div className="my-auto max-h-[100dvh] w-full animate-sheet-up overflow-y-auto rounded-t-tile bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-float sm:max-w-md sm:animate-fade-up sm:rounded-tile sm:p-7 space-y-5">
             <div className="space-y-1">
-              <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-brand-dark/50">
-                Gestión de Secciones
+              <span className="text-xs text-ink-muted">
+                Gestión de secciones
               </span>
-              <h3 className="text-lg font-bold text-brand-dark">
+              <h3 className="text-lg font-semibold text-brand-dark">
                 {sectionModal.mode === 'create' ? 'Nueva Sección en Navbar' : 'Editar Sección'}
               </h3>
             </div>
 
             {sectionModal.error && (
-              <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xs">
+              <div className="p-3 bg-red-50 text-red-800 text-xs rounded-ctl shadow-hairline">
                 {sectionModal.error}
               </div>
             )}
 
             <form onSubmit={handleSubmitSectionForm} className="space-y-4">
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                <label className="block text-xs font-semibold text-brand-dark">
                   Nombre visible <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -1613,7 +1526,7 @@ export default function AdminNavigationView() {
                     }))
                   }
                   placeholder="Ej: Sneakers, Indumentaria, Drop Exclusivo"
-                  className="form-input w-full text-xs"
+                  className="form-input w-full h-11 px-3.5 lg:h-10 text-sm"
                   required
                   autoFocus
                 />
@@ -1621,7 +1534,7 @@ export default function AdminNavigationView() {
 
               {sectionModal.mode === 'create' ? (
                 <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                  <label className="block text-xs font-semibold text-brand-dark">
                     Código identificador (Code)
                   </label>
                   <input
@@ -1631,18 +1544,18 @@ export default function AdminNavigationView() {
                       setSectionModal((prev) => ({ ...prev, code: e.target.value, error: null }))
                     }
                     placeholder="generado-automaticamente"
-                    className="form-input w-full text-xs font-mono"
+                    className="form-input w-full h-11 px-3.5 lg:h-10 text-sm"
                   />
-                  <p className="text-[11px] text-brand-dark/50">
+                  <p className="text-xs text-ink-muted">
                     Identificador técnico único. Se genera automáticamente a partir del nombre si lo dejás vacío.
                   </p>
                 </div>
               ) : (
-                <div className="p-2.5 bg-brand-dark/[0.03] border border-brand-dark/[0.08] rounded-xs text-xs space-y-0.5">
-                  <span className="text-[10px] font-mono uppercase text-brand-dark/50 block">
+                <div className="p-2.5 bg-brand-dark/[0.03] rounded-ctl text-xs space-y-0.5 shadow-hairline">
+                  <span className="text-xs text-ink-muted block">
                     Código inmutable de la sección:
                   </span>
-                  <span className="font-mono font-semibold text-brand-dark">
+                  <span className="font-semibold text-brand-dark">
                     {sectionModal.code}
                   </span>
                 </div>
@@ -1656,7 +1569,7 @@ export default function AdminNavigationView() {
                   onChange={(e) =>
                     setSectionModal((prev) => ({ ...prev, isVisible: e.target.checked }))
                   }
-                  className="rounded-xs border-brand-dark/20 text-brand-dark focus:ring-brand-dark/30"
+                  className="rounded-ctl border-brand-dark/20 text-brand-dark focus:ring-brand-dark/30"
                 />
                 <label
                   htmlFor="section-is-visible-cb"
@@ -1671,14 +1584,14 @@ export default function AdminNavigationView() {
                   type="button"
                   onClick={handleCloseSectionModal}
                   disabled={sectionModal.isSubmitting}
-                  className="px-4 py-2 text-xs font-medium text-brand-dark/70 hover:text-brand-dark cursor-pointer"
+                  className="px-4 py-2 text-xs font-medium text-ink-muted hover:text-brand-dark cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={sectionModal.isSubmitting}
-                  className="px-4 py-2 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs hover:bg-brand-dark/90 transition-all cursor-pointer disabled:opacity-50"
+                  className="px-4 py-1.5 text-xs font-semibold bg-brand-dark text-brand-light rounded-full hover:bg-ink-soft transition-all cursor-pointer disabled:opacity-50 inline-flex items-center justify-center min-h-10"
                 >
                   {sectionModal.isSubmitting ? 'Guardando...' : 'Guardar sección'}
                 </button>
@@ -1695,23 +1608,23 @@ export default function AdminNavigationView() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-dark/50 backdrop-blur-xs animate-fadeIn"
+          className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-brand-dark/45 animate-fadeIn sm:items-center sm:p-4"
         >
-          <div className="bg-white border border-brand-dark/[0.12] rounded-xs shadow-xl w-full max-w-md p-6 space-y-4">
-            <h3 className="text-base font-bold text-brand-dark">
+          <div className="my-auto max-h-[100dvh] w-full animate-sheet-up overflow-y-auto rounded-t-tile bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-float sm:max-w-md sm:animate-fade-up sm:rounded-tile sm:p-7 space-y-5">
+            <h3 className="text-base font-semibold text-brand-dark">
               ¿Eliminar sección "{deleteSectionModal.section.label}"?
             </h3>
 
             {deleteSectionModal.error && (
-              <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xs">
+              <div className="p-3 bg-red-50 text-red-800 text-xs rounded-ctl shadow-hairline">
                 {deleteSectionModal.error}
               </div>
             )}
 
-            <p className="text-xs text-brand-dark/70 leading-relaxed">
+            <p className="text-xs text-ink-muted leading-relaxed">
               Esta acción eliminará la sección y todos sus enlaces asociados del menú de navegación.
             </p>
-            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xs text-[11px] leading-relaxed">
+            <div className="p-3 bg-amber-50 border-amber-200 text-amber-900 rounded-ctl text-xs leading-relaxed shadow-hairline">
               <strong>Garantía de Integridad:</strong> Jamás se eliminarán marcas, categorías ni productos del catálogo. Solo se retira su visibilidad en el navbar.
             </div>
 
@@ -1720,7 +1633,7 @@ export default function AdminNavigationView() {
                 type="button"
                 onClick={() => setDeleteSectionModal({ isOpen: false, section: null, isDeleting: false, error: null })}
                 disabled={deleteSectionModal.isDeleting}
-                className="px-4 py-2 text-xs font-medium text-brand-dark/70 hover:text-brand-dark cursor-pointer"
+                className="px-4 py-2 text-xs font-medium text-ink-muted hover:text-brand-dark cursor-pointer"
               >
                 Cancelar
               </button>
@@ -1728,7 +1641,7 @@ export default function AdminNavigationView() {
                 type="button"
                 onClick={handleConfirmDeleteSection}
                 disabled={deleteSectionModal.isDeleting}
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider bg-red-700 text-white rounded-xs hover:bg-red-800 transition-all cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 text-xs font-semibold bg-red-800 text-white rounded-full hover:bg-red-900 transition-all cursor-pointer disabled:opacity-50 inline-flex items-center justify-center min-h-10"
               >
                 {deleteSectionModal.isDeleting ? 'Eliminando...' : 'Confirmar eliminación'}
               </button>
@@ -1744,20 +1657,20 @@ export default function AdminNavigationView() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-dark/50 backdrop-blur-xs animate-fadeIn"
+          className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-brand-dark/45 animate-fadeIn sm:items-center sm:p-4"
         >
-          <div className="bg-white border border-brand-dark/[0.12] rounded-xs shadow-xl w-full max-w-lg p-6 space-y-5">
+          <div className="my-auto max-h-[100dvh] w-full animate-sheet-up overflow-y-auto rounded-t-tile bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-float sm:max-w-lg sm:animate-fade-up sm:rounded-tile sm:p-7 space-y-5">
             <div className="space-y-1">
-              <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-brand-dark/50">
+              <span className="text-xs text-ink-muted">
                 Sección: {addItemModal.section.label}
               </span>
-              <h3 className="text-lg font-bold text-brand-dark">
-                Agregar Elemento al Menú
+              <h3 className="text-lg font-semibold text-brand-dark">
+                Agregar elemento al menú
               </h3>
             </div>
 
             {addItemModal.error && (
-              <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xs">
+              <div className="p-3 bg-red-50 text-red-800 text-xs rounded-ctl shadow-hairline">
                 {addItemModal.error}
               </div>
             )}
@@ -1766,7 +1679,7 @@ export default function AdminNavigationView() {
               {/* Type Selector (if not Brands section) */}
               {addItemModal.section.code?.toLowerCase() !== BRANDS_SECTION_CODE ? (
                 <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                  <label className="block text-xs font-semibold text-brand-dark">
                     Tipo de destino
                   </label>
                   <div className="grid grid-cols-3 gap-2">
@@ -1779,10 +1692,7 @@ export default function AdminNavigationView() {
                           error: null,
                         }))
                       }
-                      className={`py-2 px-2 text-xs font-semibold uppercase tracking-wider rounded-xs border transition-colors cursor-pointer text-center ${addItemModal.targetType === 'CATEGORY'
-                          ? 'border-brand-dark bg-brand-dark text-white'
-                          : 'border-brand-dark/20 text-brand-dark/70 hover:bg-brand-dark/[0.04]'
-                        }`}
+                      className={`py-1.5 px-2 text-xs font-semibold rounded-full transition-colors cursor-pointer text-center ${addItemModal.targetType === 'CATEGORY' ? 'bg-brand-dark text-brand-sand' : 'bg-white text-brand-dark shadow-hairline hover:shadow-card' } inline-flex items-center justify-center min-h-10`}
                     >
                       Categoría
                     </button>
@@ -1795,10 +1705,7 @@ export default function AdminNavigationView() {
                           error: null,
                         }))
                       }
-                      className={`py-2 px-2 text-xs font-semibold uppercase tracking-wider rounded-xs border transition-colors cursor-pointer text-center ${addItemModal.targetType === 'PRODUCT_FILTER'
-                          ? 'border-brand-dark bg-brand-dark text-white'
-                          : 'border-brand-dark/20 text-brand-dark/70 hover:bg-brand-dark/[0.04]'
-                        }`}
+                      className={`py-1.5 px-2 text-xs font-semibold rounded-full transition-colors cursor-pointer text-center ${addItemModal.targetType === 'PRODUCT_FILTER' ? 'bg-brand-dark text-brand-sand' : 'bg-white text-brand-dark shadow-hairline hover:shadow-card' } inline-flex items-center justify-center min-h-10`}
                     >
                       Filtro
                     </button>
@@ -1811,10 +1718,7 @@ export default function AdminNavigationView() {
                           error: null,
                         }))
                       }
-                      className={`py-2 px-2 text-xs font-semibold uppercase tracking-wider rounded-xs border transition-colors cursor-pointer text-center ${addItemModal.targetType === 'CUSTOM_LINK'
-                          ? 'border-brand-dark bg-brand-dark text-white'
-                          : 'border-brand-dark/20 text-brand-dark/70 hover:bg-brand-dark/[0.04]'
-                        }`}
+                      className={`py-1.5 px-2 text-xs font-semibold rounded-full transition-colors cursor-pointer text-center ${addItemModal.targetType === 'CUSTOM_LINK' ? 'bg-brand-dark text-brand-sand' : 'bg-white text-brand-dark shadow-hairline hover:shadow-card' } inline-flex items-center justify-center min-h-10`}
                     >
                       Personalizado
                     </button>
@@ -1826,8 +1730,8 @@ export default function AdminNavigationView() {
               {addItemModal.targetType === 'BRAND' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
-                      Seleccionar Marca <span className="text-red-500">*</span>
+                    <label className="block text-xs font-semibold text-brand-dark">
+                      Seleccionar marca <span className="text-red-500">*</span>
                     </label>
                     <button
                       type="button"
@@ -1843,7 +1747,7 @@ export default function AdminNavigationView() {
                     onChange={(e) =>
                       setAddItemModal((prev) => ({ ...prev, brandId: e.target.value, error: null }))
                     }
-                    className="form-select w-full text-xs"
+                    className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                     required
                   >
                     <option value="">Seleccioná una marca...</option>
@@ -1859,7 +1763,7 @@ export default function AdminNavigationView() {
                   </select>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Columna de visualización en Brands
                     </label>
                     <select
@@ -1871,7 +1775,7 @@ export default function AdminNavigationView() {
                           error: null,
                         }))
                       }
-                      className="form-select w-full text-xs"
+                      className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                     >
                       <option value={0}>Columna 1 (Featured Brands)</option>
                       <option value={1}>Columna 2 (Explore Brands)</option>
@@ -1884,7 +1788,7 @@ export default function AdminNavigationView() {
               {addItemModal.targetType === 'CATEGORY' && (
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Categoría <span className="text-red-500">*</span>
                     </label>
                     <select
@@ -1896,7 +1800,7 @@ export default function AdminNavigationView() {
                           error: null,
                         }))
                       }
-                      className="form-select w-full text-xs"
+                      className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                       required
                     >
                       <option value="">Seleccioná una categoría del catálogo...</option>
@@ -1909,7 +1813,7 @@ export default function AdminNavigationView() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Texto personalizado opcional (Label)
                     </label>
                     <input
@@ -1919,12 +1823,12 @@ export default function AdminNavigationView() {
                         setAddItemModal((prev) => ({ ...prev, label: e.target.value }))
                       }
                       placeholder="Dejar vacío para usar el nombre de la categoría"
-                      className="form-input w-full text-xs"
+                      className="form-input w-full h-11 px-3.5 lg:h-10 text-sm"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Columna visual
                     </label>
                     <select
@@ -1935,7 +1839,7 @@ export default function AdminNavigationView() {
                           columnIndex: Number(e.target.value),
                         }))
                       }
-                      className="form-select w-full text-xs"
+                      className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                     >
                       {Array.from(
                         {
@@ -1960,7 +1864,7 @@ export default function AdminNavigationView() {
               {addItemModal.targetType === 'PRODUCT_FILTER' && (
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Etiqueta / Nombre visible <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -1970,13 +1874,13 @@ export default function AdminNavigationView() {
                         setAddItemModal((prev) => ({ ...prev, label: e.target.value, error: null }))
                       }
                       placeholder="Ej: Men, Women, Retro Sneakers, Nike Running"
-                      className="form-input w-full text-xs"
+                      className="form-input w-full h-11 px-3.5 lg:h-10 text-sm"
                       required
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Categoría (opcional)
                     </label>
                     <select
@@ -1984,7 +1888,7 @@ export default function AdminNavigationView() {
                       onChange={(e) =>
                         setAddItemModal((prev) => ({ ...prev, categoryId: e.target.value, error: null }))
                       }
-                      className="form-select w-full text-xs"
+                      className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                     >
                       <option value="">(Sin filtro de categoría)</option>
                       {categories.map((c) => (
@@ -1996,7 +1900,7 @@ export default function AdminNavigationView() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Marca (opcional)
                     </label>
                     <select
@@ -2004,7 +1908,7 @@ export default function AdminNavigationView() {
                       onChange={(e) =>
                         setAddItemModal((prev) => ({ ...prev, brandId: e.target.value, error: null }))
                       }
-                      className="form-select w-full text-xs"
+                      className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                     >
                       <option value="">(Sin filtro de marca)</option>
                       {brands
@@ -2018,7 +1922,7 @@ export default function AdminNavigationView() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Género (opcional)
                     </label>
                     <select
@@ -2026,20 +1930,20 @@ export default function AdminNavigationView() {
                       onChange={(e) =>
                         setAddItemModal((prev) => ({ ...prev, gender: e.target.value, error: null }))
                       }
-                      className="form-select w-full text-xs"
+                      className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                     >
                       <option value="">(Sin filtro de género)</option>
                       <option value="MEN">Hombre (MEN)</option>
                       <option value="WOMEN">Mujer (WOMEN)</option>
                       <option value="UNISEX">Unisex (UNISEX)</option>
                     </select>
-                    <p className="text-[11px] text-brand-dark/45">
+                    <p className="text-xs text-ink-muted">
                       Debes seleccionar al menos un criterio (Categoría, Marca o Género).
                     </p>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Columna visual
                     </label>
                     <select
@@ -2050,7 +1954,7 @@ export default function AdminNavigationView() {
                           columnIndex: Number(e.target.value),
                         }))
                       }
-                      className="form-select w-full text-xs"
+                      className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                     >
                       {Array.from(
                         {
@@ -2075,7 +1979,7 @@ export default function AdminNavigationView() {
               {addItemModal.targetType === 'CUSTOM_LINK' && (
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Texto visible <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -2085,13 +1989,13 @@ export default function AdminNavigationView() {
                         setAddItemModal((prev) => ({ ...prev, label: e.target.value, error: null }))
                       }
                       placeholder="Ej: Nuevos Ingresos, Guía de Talles, FAQ"
-                      className="form-input w-full text-xs"
+                      className="form-input w-full h-11 px-3.5 lg:h-10 text-sm"
                       required
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       URL de destino <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -2105,16 +2009,16 @@ export default function AdminNavigationView() {
                         }))
                       }
                       placeholder="Ej: /#catalogo o https://instagram.com/theofficeba"
-                      className="form-input w-full text-xs font-mono"
+                      className="form-input w-full h-11 px-3.5 lg:h-10 text-sm"
                       required
                     />
-                    <p className="text-[11px] text-brand-dark/50 leading-relaxed">
-                      Rutas internas (<span className="font-mono">/#catalogo</span>, <span className="font-mono">/ofertas</span>) navegarán en la misma pestaña. Enlaces externos (<span className="font-mono">https://...</span>) se abrirán automáticamente en una nueva pestaña.
+                    <p className="text-xs text-ink-muted leading-relaxed">
+                      Rutas internas (<span className="">/#catalogo</span>, <span className="">/ofertas</span>) navegarán en la misma pestaña. Enlaces externos (<span className="">https://...</span>) se abrirán automáticamente en una nueva pestaña.
                     </p>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Columna visual
                     </label>
                     <select
@@ -2125,7 +2029,7 @@ export default function AdminNavigationView() {
                           columnIndex: Number(e.target.value),
                         }))
                       }
-                      className="form-select w-full text-xs"
+                      className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                     >
                       {Array.from(
                         {
@@ -2154,7 +2058,7 @@ export default function AdminNavigationView() {
                   onChange={(e) =>
                     setAddItemModal((prev) => ({ ...prev, isVisible: e.target.checked }))
                   }
-                  className="rounded-xs border-brand-dark/20 text-brand-dark"
+                  className="rounded-ctl border-brand-dark/20 text-brand-dark"
                 />
                 <label
                   htmlFor="add-item-is-visible-cb"
@@ -2169,14 +2073,14 @@ export default function AdminNavigationView() {
                   type="button"
                   onClick={handleCloseAddItemModal}
                   disabled={addItemModal.isSubmitting}
-                  className="px-4 py-2 text-xs font-medium text-brand-dark/70 hover:text-brand-dark cursor-pointer"
+                  className="px-4 py-2 text-xs font-medium text-ink-muted hover:text-brand-dark cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={addItemModal.isSubmitting}
-                  className="px-4 py-2 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs hover:bg-brand-dark/90 transition-all cursor-pointer disabled:opacity-50"
+                  className="px-4 py-1.5 text-xs font-semibold bg-brand-dark text-brand-light rounded-full hover:bg-ink-soft transition-all cursor-pointer disabled:opacity-50 inline-flex items-center justify-center min-h-10"
                 >
                   {addItemModal.isSubmitting ? 'Agregando...' : 'Agregar al menú'}
                 </button>
@@ -2193,20 +2097,20 @@ export default function AdminNavigationView() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-dark/50 backdrop-blur-xs animate-fadeIn"
+          className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-brand-dark/45 animate-fadeIn sm:items-center sm:p-4"
         >
-          <div className="bg-white border border-brand-dark/[0.12] rounded-xs shadow-xl w-full max-w-md p-6 space-y-4">
+          <div className="my-auto max-h-[100dvh] w-full animate-sheet-up overflow-y-auto rounded-t-tile bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-float sm:max-w-md sm:animate-fade-up sm:rounded-tile sm:p-7 space-y-5">
             <div className="space-y-1">
-              <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-brand-dark/50">
+              <span className="text-xs text-ink-muted">
                 Editar Elemento
               </span>
-              <h3 className="text-base font-bold text-brand-dark">
+              <h3 className="text-base font-semibold text-brand-dark">
                 {editItemModal.item.brandName || editItemModal.item.categoryName || editItemModal.item.label}
               </h3>
             </div>
 
             {editItemModal.error && (
-              <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xs">
+              <div className="p-3 bg-red-50 text-red-800 text-xs rounded-ctl shadow-hairline">
                 {editItemModal.error}
               </div>
             )}
@@ -2214,7 +2118,7 @@ export default function AdminNavigationView() {
             <form onSubmit={handleSubmitEditItem} className="space-y-4">
               {editItemModal.item.targetType !== 'BRAND' && (
                 <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                  <label className="block text-xs font-semibold text-brand-dark">
                     Nombre visible (Label)
                   </label>
                   <input
@@ -2223,7 +2127,7 @@ export default function AdminNavigationView() {
                     onChange={(e) =>
                       setEditItemModal((prev) => ({ ...prev, label: e.target.value, error: null }))
                     }
-                    className="form-input w-full text-xs"
+                    className="form-input w-full h-11 px-3.5 lg:h-10 text-sm"
                     placeholder="Nombre visible en el menú"
                   />
                 </div>
@@ -2231,7 +2135,7 @@ export default function AdminNavigationView() {
 
               {editItemModal.item.targetType === 'CUSTOM_LINK' && (
                 <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                  <label className="block text-xs font-semibold text-brand-dark">
                     URL de destino
                   </label>
                   <input
@@ -2244,11 +2148,11 @@ export default function AdminNavigationView() {
                         error: null,
                       }))
                     }
-                    className="form-input w-full text-xs font-mono"
+                    className="form-input w-full h-11 px-3.5 lg:h-10 text-sm"
                     required
                   />
-                  <p className="text-[11px] text-brand-dark/50 leading-relaxed">
-                    Rutas internas (<span className="font-mono">/#catalogo</span>, <span className="font-mono">/ofertas</span>) navegarán en la misma pestaña; enlaces externos (<span className="font-mono">https://...</span>) abrirán automáticamente en una nueva pestaña.
+                  <p className="text-xs text-ink-muted leading-relaxed">
+                    Rutas internas (<span className="">/#catalogo</span>, <span className="">/ofertas</span>) navegarán en la misma pestaña; enlaces externos (<span className="">https://...</span>) abrirán automáticamente en una nueva pestaña.
                   </p>
                 </div>
               )}
@@ -2256,7 +2160,7 @@ export default function AdminNavigationView() {
               {editItemModal.item.targetType === 'PRODUCT_FILTER' && (
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Categoría (opcional)
                     </label>
                     <select
@@ -2264,7 +2168,7 @@ export default function AdminNavigationView() {
                       onChange={(e) =>
                         setEditItemModal((prev) => ({ ...prev, categoryId: e.target.value, error: null }))
                       }
-                      className="form-select w-full text-xs"
+                      className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                     >
                       <option value="">(Sin filtro de categoría)</option>
                       {categories.map((c) => (
@@ -2276,7 +2180,7 @@ export default function AdminNavigationView() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Marca (opcional)
                     </label>
                     <select
@@ -2284,7 +2188,7 @@ export default function AdminNavigationView() {
                       onChange={(e) =>
                         setEditItemModal((prev) => ({ ...prev, brandId: e.target.value, error: null }))
                       }
-                      className="form-select w-full text-xs"
+                      className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                     >
                       <option value="">(Sin filtro de marca)</option>
                       {brands
@@ -2298,7 +2202,7 @@ export default function AdminNavigationView() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                    <label className="block text-xs font-semibold text-brand-dark">
                       Género (opcional)
                     </label>
                     <select
@@ -2306,14 +2210,14 @@ export default function AdminNavigationView() {
                       onChange={(e) =>
                         setEditItemModal((prev) => ({ ...prev, gender: e.target.value, error: null }))
                       }
-                      className="form-select w-full text-xs"
+                      className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                     >
                       <option value="">(Sin filtro de género)</option>
                       <option value="MEN">Hombre (MEN)</option>
                       <option value="WOMEN">Mujer (WOMEN)</option>
                       <option value="UNISEX">Unisex (UNISEX)</option>
                     </select>
-                    <p className="text-[11px] text-brand-dark/45">
+                    <p className="text-xs text-ink-muted">
                       Debes seleccionar al menos un criterio (Categoría, Marca o Género).
                     </p>
                   </div>
@@ -2321,7 +2225,7 @@ export default function AdminNavigationView() {
               )}
 
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                <label className="block text-xs font-semibold text-brand-dark">
                   Columna visual
                 </label>
                 <select
@@ -2332,7 +2236,7 @@ export default function AdminNavigationView() {
                       columnIndex: Number(e.target.value),
                     }))
                   }
-                  className="form-select w-full text-xs"
+                  className="form-select w-full h-11 pl-3.5 lg:h-10 text-sm"
                 >
                   {editItemModal.section?.code?.toLowerCase() === BRANDS_SECTION_CODE ? (
                     <>
@@ -2366,7 +2270,7 @@ export default function AdminNavigationView() {
                   onChange={(e) =>
                     setEditItemModal((prev) => ({ ...prev, isVisible: e.target.checked }))
                   }
-                  className="rounded-xs border-brand-dark/20 text-brand-dark"
+                  className="rounded-ctl border-brand-dark/20 text-brand-dark"
                 />
                 <label
                   htmlFor="edit-item-is-visible-cb"
@@ -2381,14 +2285,14 @@ export default function AdminNavigationView() {
                   type="button"
                   onClick={handleCloseEditItemModal}
                   disabled={editItemModal.isSubmitting}
-                  className="px-4 py-2 text-xs font-medium text-brand-dark/70 hover:text-brand-dark cursor-pointer"
+                  className="px-4 py-2 text-xs font-medium text-ink-muted hover:text-brand-dark cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={editItemModal.isSubmitting}
-                  className="px-4 py-2 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs hover:bg-brand-dark/90 transition-all cursor-pointer disabled:opacity-50"
+                  className="px-4 py-1.5 text-xs font-semibold bg-brand-dark text-brand-light rounded-full hover:bg-ink-soft transition-all cursor-pointer disabled:opacity-50 inline-flex items-center justify-center min-h-10"
                 >
                   {editItemModal.isSubmitting ? 'Guardando...' : 'Guardar cambios'}
                 </button>
@@ -2405,20 +2309,20 @@ export default function AdminNavigationView() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-dark/50 backdrop-blur-xs animate-fadeIn"
+          className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-brand-dark/45 animate-fadeIn sm:items-center sm:p-4"
         >
-          <div className="bg-white border border-brand-dark/[0.12] rounded-xs shadow-xl w-full max-w-md p-6 space-y-4">
-            <h3 className="text-base font-bold text-brand-dark">
+          <div className="my-auto max-h-[100dvh] w-full animate-sheet-up overflow-y-auto rounded-t-tile bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-float sm:max-w-md sm:animate-fade-up sm:rounded-tile sm:p-7 space-y-5">
+            <h3 className="text-base font-semibold text-brand-dark">
               ¿Quitar del menú?
             </h3>
 
             {deleteItemModal.error && (
-              <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xs">
+              <div className="p-3 bg-red-50 text-red-800 text-xs rounded-ctl shadow-hairline">
                 {deleteItemModal.error}
               </div>
             )}
 
-            <p className="text-xs text-brand-dark/70 leading-relaxed">
+            <p className="text-xs text-ink-muted leading-relaxed">
               ¿Estás seguro de que deseás retirar "
               <strong>
                 {deleteItemModal.item.brandName ||
@@ -2427,7 +2331,7 @@ export default function AdminNavigationView() {
               </strong>
               " del menú de navegación?
             </p>
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xs text-[11px] leading-relaxed">
+            <div className="p-3 bg-emerald-50 border-emerald-200 text-emerald-900 rounded-ctl text-xs leading-relaxed shadow-hairline">
               <strong>Aviso de seguridad:</strong> Esta acción únicamente elimina el enlace del navbar. La marca, categoría o producto no se verán modificados ni eliminados del catálogo.
             </div>
 
@@ -2436,7 +2340,7 @@ export default function AdminNavigationView() {
                 type="button"
                 onClick={() => setDeleteItemModal({ isOpen: false, section: null, item: null, isDeleting: false, error: null })}
                 disabled={deleteItemModal.isDeleting}
-                className="px-4 py-2 text-xs font-medium text-brand-dark/70 hover:text-brand-dark cursor-pointer"
+                className="px-4 py-2 text-xs font-medium text-ink-muted hover:text-brand-dark cursor-pointer"
               >
                 Cancelar
               </button>
@@ -2444,7 +2348,7 @@ export default function AdminNavigationView() {
                 type="button"
                 onClick={handleConfirmDeleteItem}
                 disabled={deleteItemModal.isDeleting}
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider bg-red-700 text-white rounded-xs hover:bg-red-800 transition-all cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 text-xs font-semibold bg-red-800 text-white rounded-full hover:bg-red-900 transition-all cursor-pointer disabled:opacity-50 inline-flex items-center justify-center min-h-10"
               >
                 {deleteItemModal.isDeleting ? 'Quitando...' : 'Quitar del menú'}
               </button>
@@ -2460,27 +2364,27 @@ export default function AdminNavigationView() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-brand-dark/60 backdrop-blur-xs animate-fadeIn"
+          className="fixed inset-0 z-[60] flex items-end justify-center overflow-y-auto bg-brand-dark/45 animate-fadeIn sm:items-center sm:p-4"
         >
-          <div className="bg-white border border-brand-dark/[0.12] rounded-xs shadow-2xl w-full max-w-sm p-5 space-y-4">
+          <div className="my-auto max-h-[100dvh] w-full animate-sheet-up overflow-y-auto rounded-t-tile bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-float sm:max-w-sm sm:animate-fade-up sm:rounded-tile sm:p-7 space-y-5">
             <div className="space-y-1">
-              <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-brand-dark/50">
+              <span className="text-xs text-ink-muted">
                 Alta Rápida de Marca
               </span>
-              <h4 className="text-base font-bold text-brand-dark">
+              <h4 className="text-base font-semibold text-brand-dark">
                 + Crear Nueva Marca
               </h4>
             </div>
 
             {createBrandModal.error && (
-              <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xs">
+              <div className="p-3 bg-red-50 text-red-800 text-xs rounded-ctl shadow-hairline">
                 {createBrandModal.error}
               </div>
             )}
 
             <form onSubmit={handleSubmitCreateBrand} className="space-y-3">
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-brand-dark uppercase tracking-wider">
+                <label className="block text-xs font-semibold text-brand-dark">
                   Nombre de la marca <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -2494,7 +2398,7 @@ export default function AdminNavigationView() {
                     }))
                   }
                   placeholder="Ej: Fear of God, Jacquemus"
-                  className="form-input w-full text-xs"
+                  className="form-input w-full h-11 px-3.5 lg:h-10 text-sm"
                   required
                   autoFocus
                 />
@@ -2502,18 +2406,18 @@ export default function AdminNavigationView() {
 
               {/* Slug Preview */}
               {createBrandModal.name.trim() && (
-                <div className="p-2.5 bg-brand-dark/[0.03] border border-brand-dark/[0.08] rounded-xs text-xs space-y-1">
-                  <span className="text-[10px] font-mono uppercase text-brand-dark/50 block">
+                <div className="p-2.5 bg-brand-dark/[0.03] rounded-ctl text-xs space-y-1 shadow-hairline">
+                  <span className="text-xs text-ink-muted block">
                     Slug sugerido:
                   </span>
-                  <span className="font-mono text-xs font-semibold text-brand-dark">
+                  <span className="text-xs font-semibold text-brand-dark">
                     {suggestBrandSlug(createBrandModal.name)}
                   </span>
                 </div>
               )}
 
               {/* Informational Warning */}
-              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xs text-[11px] text-amber-900 leading-relaxed">
+              <div className="p-2.5 bg-amber-50 border-amber-200 rounded-ctl text-xs text-amber-900 leading-relaxed shadow-hairline">
                 <strong>Importante:</strong> Esta marca quedará registrada. Sin embargo, no aparecerá públicamente en el navbar hasta que tenga al menos un producto activo asociado en el catálogo.
               </div>
 
@@ -2522,14 +2426,14 @@ export default function AdminNavigationView() {
                   type="button"
                   onClick={handleCloseCreateBrandModal}
                   disabled={createBrandModal.isSubmitting}
-                  className="px-3 py-1.5 text-xs font-medium text-brand-dark/70 hover:text-brand-dark cursor-pointer"
+                  className="px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-brand-dark cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={createBrandModal.isSubmitting}
-                  className="px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs hover:bg-brand-dark/90 transition-all cursor-pointer disabled:opacity-50"
+                  className="px-3.5 py-1.5.5 text-xs font-semibold bg-brand-dark text-brand-light rounded-full hover:bg-ink-soft transition-all cursor-pointer disabled:opacity-50 inline-flex items-center justify-center min-h-10"
                 >
                   {createBrandModal.isSubmitting ? 'Creando...' : 'Crear y seleccionar'}
                 </button>

@@ -357,7 +357,7 @@ export default function NavbarSearch() {
         aria-label={isOpen ? 'Cerrar buscador de productos' : 'Buscar productos'}
         aria-expanded={isOpen}
         aria-controls="navbar-search-panel"
-        className={`relative flex items-center justify-center w-11 h-11 rounded-sm text-brand-dark transition-opacity duration-150 hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 active:scale-95 cursor-pointer ${
+        className={`relative flex items-center justify-center w-11 h-11 rounded-full text-brand-dark transition duration-150 hover:bg-brand-dark/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 active:scale-95 cursor-pointer ${
           isOpen ? 'bg-brand-dark/[0.06]' : ''
         }`}
       >
@@ -386,7 +386,7 @@ export default function NavbarSearch() {
           role="dialog"
           aria-label="Buscador de productos"
           onKeyDown={handleKeyDown}
-          className="fixed left-0 right-0 top-14 md:top-16 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[380px] md:w-[430px] z-50 bg-[#FAFAFA] border-b sm:border border-brand-dark/15 sm:rounded-xs shadow-lg overflow-hidden"
+          className="fixed left-0 right-0 top-14 md:top-16 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[380px] md:w-[430px] z-50 bg-brand-light rounded-b-tile sm:rounded-card shadow-card-hover overflow-hidden"
         >
           {/* Input Bar */}
           <form
@@ -399,7 +399,7 @@ export default function NavbarSearch() {
             </label>
 
             <span
-              className="text-brand-dark/45 shrink-0 flex items-center justify-center w-5 h-5"
+              className="text-ink-muted shrink-0 flex items-center justify-center w-5 h-5"
               aria-hidden="true"
             >
               {isLoading ? (
@@ -437,7 +437,7 @@ export default function NavbarSearch() {
                   ? `navbar-search-option-${results[activeIndex].id}`
                   : undefined
               }
-              className="w-full bg-transparent text-base sm:text-sm text-brand-dark placeholder:text-brand-dark/35 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+              className="w-full bg-transparent text-base sm:text-sm text-brand-dark placeholder:text-ink-muted focus:outline-none [&::-webkit-search-cancel-button]:hidden"
             />
 
             {query.length > 0 && (
@@ -445,7 +445,7 @@ export default function NavbarSearch() {
                 type="button"
                 onClick={handleClearInput}
                 aria-label="Limpiar texto de búsqueda"
-                className="px-1.5 py-0.5 text-[11px] font-medium text-brand-dark/45 hover:text-brand-dark transition-colors rounded-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 cursor-pointer shrink-0"
+                className="px-2 py-1 text-xs font-medium text-ink-muted hover:text-brand-dark transition-colors rounded-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-dark/30 cursor-pointer shrink-0"
               >
                 Limpiar
               </button>
@@ -455,7 +455,7 @@ export default function NavbarSearch() {
               type="button"
               onClick={handleClose}
               aria-label="Cerrar buscador"
-              className="flex items-center justify-center w-7 h-7 rounded-xs text-brand-dark/50 hover:text-brand-dark hover:bg-brand-dark/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 cursor-pointer shrink-0"
+              className="flex items-center justify-center w-8 h-8 rounded-full text-ink-muted hover:text-brand-dark hover:bg-brand-dark/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 cursor-pointer shrink-0"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -479,7 +479,7 @@ export default function NavbarSearch() {
           <div className="bg-[#FAFAFA]">
             {/* 1. Minimum characters hint */}
             {trimmedQuery.length === 1 && (
-              <div className="px-4 py-5 text-center text-xs text-brand-dark/50">
+              <div className="px-4 py-5 text-center text-sm text-ink-muted">
                 Ingresá al menos {MIN_SEARCH_LENGTH} caracteres para iniciar la búsqueda.
               </div>
             )}
@@ -489,7 +489,7 @@ export default function NavbarSearch() {
               isLoading &&
               results.length === 0 && (
                 <div
-                  className="px-4 py-6 text-center text-xs text-brand-dark/55"
+                  className="px-4 py-6 text-center text-sm text-ink-muted"
                   aria-live="polite"
                 >
                   Buscando «{trimmedQuery}»...
@@ -511,7 +511,7 @@ export default function NavbarSearch() {
                     requestIdRef.current += 1;
                     executeSearch(trimmedQuery, requestIdRef.current);
                   }}
-                  className="inline-flex items-center justify-center px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#FAFAFA] bg-brand-dark rounded-xs hover:opacity-85 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 cursor-pointer"
+                  className="inline-flex items-center justify-center h-11 px-5 text-sm font-semibold text-brand-light bg-brand-dark rounded-full hover:bg-ink-soft transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 cursor-pointer"
                 >
                   Reintentar
                 </button>
@@ -528,10 +528,10 @@ export default function NavbarSearch() {
                   className="px-4 py-6 text-center space-y-1"
                   aria-live="polite"
                 >
-                  <p className="text-xs font-medium text-brand-dark/70">
+                  <p className="text-[13px] font-medium text-ink-muted">
                     No se encontraron productos para «{trimmedQuery}».
                   </p>
-                  <p className="text-[11px] text-brand-dark/45">
+                  <p className="text-xs text-ink-muted">
                     Intentá con otro nombre o explorá el catálogo completo.
                   </p>
                 </div>
@@ -568,7 +568,7 @@ export default function NavbarSearch() {
                             }`}
                           >
                             {/* Product Primary Image (4:5 ratio) */}
-                            <div className="aspect-[4/5] w-11 shrink-0 overflow-hidden rounded-xs border border-brand-dark/[0.06] flex items-center justify-center">
+                            <div className="aspect-[4/5] w-11 shrink-0 overflow-hidden rounded-ctl bg-sunken flex items-center justify-center">
                               <img
                                 src={getOptimizedImageUrl(product.image, 'thumbnail')}
                                 alt={product.title}
@@ -581,11 +581,11 @@ export default function NavbarSearch() {
                             {/* Product Name & Category */}
                             <div className="min-w-0 flex-1">
                               {product.category && (
-                                <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-brand-dark/45 truncate">
+                                <p className="text-xs text-ink-muted truncate">
                                   {product.category}
                                 </p>
                               )}
-                              <p className="text-xs sm:text-[13px] font-medium tracking-tight text-brand-dark truncate">
+                              <p className="text-[14px] font-medium text-brand-dark truncate">
                                 {product.title}
                               </p>
                             </div>
@@ -593,11 +593,11 @@ export default function NavbarSearch() {
                             {/* Formatted Price */}
                             <div className="flex flex-col items-end shrink-0 tabular-nums">
                               {product.formattedPreviousPrice && (
-                                <span className="text-[10px] text-brand-dark/45 line-through font-normal leading-tight">
+                                <span className="text-xs text-ink-muted line-through font-normal leading-tight">
                                   {product.formattedPreviousPrice}
                                 </span>
                               )}
-                              <span className="text-xs sm:text-[13px] font-semibold tracking-tight text-brand-dark">
+                              <span className="text-[14px] font-semibold text-brand-dark">
                                 {product.formattedPrice}
                               </span>
                             </div>
@@ -617,7 +617,7 @@ export default function NavbarSearch() {
                       <span className="truncate pr-2">
                         Ver todos los resultados para «{trimmedQuery}»
                       </span>
-                      <span className="font-mono text-[11px] text-brand-dark/50 shrink-0">
+                      <span className="text-xs text-ink-muted shrink-0">
                         [{results.length}] →
                       </span>
                     </a>

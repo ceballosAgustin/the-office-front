@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import { adminLogin } from '../../../services/api';
 import { getAdminSession } from '../../../services/adminAuth';
+import Button from './ui/Button';
+import Field, { inputClass } from './ui/Field';
+import Icon from './ui/icons';
 
 export default function AdminLoginView() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
@@ -20,7 +24,7 @@ export default function AdminLoginView() {
       const reason = params.get('reason');
       if (reason === 'expired') {
         setErrorMessage(
-          'Tu sesión administrativa expiró o no es válida. Por favor iniciá sesión nuevamente.'
+          'Tu sesión administrativa expiró o no es válida. Iniciá sesión de nuevo.'
         );
       } else if (reason === 'forbidden') {
         setErrorMessage(
@@ -35,7 +39,7 @@ export default function AdminLoginView() {
     if (isSubmitting) return;
 
     if (!username.trim() || !password) {
-      setErrorMessage('Por favor ingresá tu usuario y contraseña.');
+      setErrorMessage('Ingresá tu usuario y contraseña.');
       return;
     }
 
@@ -48,6 +52,7 @@ export default function AdminLoginView() {
       window.location.replace('/admin');
     } catch (err) {
       setPassword('');
+      setShowPassword(false);
       setErrorMessage(
         err?.message ||
           'No se pudo iniciar sesión. Verificá tus credenciales e intentá nuevamente.'
@@ -58,68 +63,50 @@ export default function AdminLoginView() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-between px-4 py-8 sm:px-6 lg:px-8">
-      {/* Top Bar: Return to Store */}
-      <div className="mx-auto w-full max-w-7xl flex items-center justify-between">
+    <div className="flex min-h-screen flex-col justify-between px-4 py-6 sm:px-6">
+      {/* Top bar: volver a la tienda */}
+      <div className="mx-auto flex w-full max-w-5xl items-center justify-between">
         <a
           href="/"
-          className="inline-flex items-center gap-2 text-xs font-medium text-brand-dark/65 hover:text-brand-dark transition-colors"
+          className="inline-flex min-h-11 items-center gap-2 rounded-full pr-3 text-sm font-medium text-ink-muted transition-colors hover:text-brand-dark"
         >
-          <span aria-hidden="true">←</span>
-          <span>Volver a la tienda pública</span>
+          <Icon name="chevronLeft" size={16} />
+          <span>Volver a la tienda</span>
         </a>
-        <span className="text-[11px] font-mono uppercase tracking-[0.2em] text-brand-dark/40">
-          Acceso Restringido
-        </span>
       </div>
 
-      {/* Centered Login Card */}
-      <div className="mx-auto w-full max-w-md my-12">
-        <div className="bg-[#FAF9F6]/90 backdrop-blur-md border border-brand-dark/12 p-7 sm:p-9 rounded-xs shadow-xs space-y-6">
-          {/* Brand Header */}
-          <div className="space-y-2 border-b border-brand-dark/[0.08] pb-5">
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-baseline text-lg font-bold tracking-[-0.03em] uppercase text-brand-dark select-none">
-                THE OFFICE
-                <sup className="text-[9px] font-bold tracking-tight relative -top-1.5 ml-0.5 leading-none text-brand-dark">
-                  BA
-                </sup>
-              </span>
-              <span className="text-[10px] font-mono uppercase tracking-[0.18em] px-2 py-0.5 bg-brand-dark text-[#FAFAFA] rounded-xs">
-                Admin
-              </span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-brand-dark pt-1">
-              Acceso Administrativo
-            </h1>
-            <p className="text-xs text-brand-dark/60 leading-relaxed">
-              Ingresá tus credenciales de administrador para gestionar las
-              consultas comerciales y confirmar pedidos.
-            </p>
+      {/* Card de login (blanca sobre el mármol) */}
+      <div className="mx-auto my-8 w-full max-w-[420px]">
+        <div className="rounded-tile bg-white p-6 shadow-card sm:p-9">
+          <div className="flex items-center gap-2.5">
+            <span className="inline-flex select-none items-baseline text-lg font-bold uppercase tracking-[-0.03em] text-brand-dark">
+              THE OFFICE
+              <sup className="relative -top-1.5 ml-0.5 text-[10px] leading-none">BA</sup>
+            </span>
+            <span className="rounded-full bg-brand-sand px-2.5 py-0.5 text-xs font-semibold text-brand-dark">
+              Admin
+            </span>
           </div>
+          <h1 className="mt-6 text-[1.625rem] font-semibold leading-tight tracking-[-0.025em] text-brand-dark">
+            Ingresá al panel
+          </h1>
+          <p className="mt-1.5 text-[15px] text-ink-muted">
+            Gestioná productos, consultas y pedidos.
+          </p>
 
-          {/* Error Feedback */}
           {errorMessage && (
             <div
-              className="p-3.5 bg-red-50/90 border border-red-200 rounded-xs text-xs text-red-800 space-y-1"
+              className="mt-5 rounded-card bg-red-50 p-3.5 text-sm text-red-900"
               role="alert"
             >
-              <p className="font-semibold">Error de acceso</p>
-              <p className="leading-relaxed">{errorMessage}</p>
+              <p className="font-semibold">No pudimos iniciar sesión</p>
+              <p className="mt-0.5 leading-relaxed">{errorMessage}</p>
             </div>
           )}
 
-          {/* Login Form */}
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            <div className="space-y-1.5">
-              <label
-                htmlFor="admin-username"
-                className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/70"
-              >
-                Usuario
-              </label>
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
+            <Field label="Usuario" id="admin-username">
               <input
-                id="admin-username"
                 name="username"
                 type="text"
                 autoComplete="username"
@@ -128,53 +115,58 @@ export default function AdminLoginView() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="admin"
-                className="form-input w-full h-11 px-3.5 text-base sm:text-sm"
+                className={inputClass}
               />
-            </div>
+            </Field>
 
-            <div className="space-y-1.5">
-              <label
-                htmlFor="admin-password"
-                className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/70"
-              >
-                Contraseña
-              </label>
-              <input
-                id="admin-password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                disabled={isSubmitting}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="form-input w-full h-11 px-3.5 text-base sm:text-sm"
-              />
-            </div>
+            <Field label="Contraseña" id="admin-password">
+              {(controlProps) => (
+              <div className="relative">
+                <input
+                  {...controlProps}
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  required
+                  disabled={isSubmitting}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Tu contraseña"
+                  className={`${inputClass} pr-12`}
+                />
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  aria-pressed={showPassword}
+                  aria-controls="admin-password"
+                  disabled={isSubmitting}
+                  className="absolute right-0 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full text-ink-muted transition-colors hover:text-brand-dark disabled:opacity-50"
+                >
+                  <Icon name={showPassword ? 'eyeOff' : 'eye'} size={20} />
+                </button>
+              </div>
+              )}
+            </Field>
 
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className={`w-full min-h-[46px] px-5 flex items-center justify-center gap-2 rounded-xs text-xs font-semibold uppercase tracking-wider transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark focus-visible:ring-offset-2 ${
-                  isSubmitting
-                    ? 'bg-brand-dark/40 text-[#FAFAFA]/80 cursor-not-allowed'
-                    : 'bg-brand-dark text-[#FAFAFA] hover:opacity-90 active:scale-[0.99] cursor-pointer'
-                }`}
-              >
-                {isSubmitting ? 'Verificando credenciales...' : 'Iniciar sesión'}
-              </button>
-            </div>
+            <Button
+              type="submit"
+              size="lg"
+              fullWidth
+              loading={isSubmitting}
+              loadingText="Verificando credenciales…"
+              className="mt-2 h-12"
+            >
+              Iniciar sesión
+            </Button>
           </form>
         </div>
       </div>
 
-      {/* Bottom Notice */}
-      <div className="mx-auto w-full max-w-7xl text-center text-[11px] text-brand-dark/40">
-        Exclusivo para personal autorizado con rol ADMIN — The Office BA
-      </div>
+      <p className="text-center text-[13px] text-ink-muted">
+        Acceso solo para personal autorizado · The Office BA
+      </p>
     </div>
   );
 }
-

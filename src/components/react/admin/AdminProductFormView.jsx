@@ -1,12 +1,33 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AdminShell from './AdminShell';
-import SweetAlertModal from './SweetAlertModal';
+import Button from './ui/Button';
+import Card from './ui/Card';
+import Field, { inputClass, selectClass, textareaClass } from './ui/Field';
+import Segmented from './ui/Segmented';
+import Switch from './ui/Switch';
+import Menu from './ui/Menu';
+import Icon from './ui/icons';
+import EmptyState from './ui/EmptyState';
+import ErrorState from './ui/ErrorState';
+import { toast } from './ui/Toast';
+import ProductPhotosCard from './product/ProductPhotosCard';
+import ProductVariantsCard from './product/ProductVariantsCard';
+import NewInSlotPicker from './product/NewInSlotPicker';
+import ProductStorePreview from './product/ProductStorePreview';
+import useProductVariants from './product/useProductVariants';
+import {
+  MAX_FILE_SIZE_BYTES,
+  MAX_TOTAL_UPLOAD_BYTES,
+  formatFileSize,
+  toIdString,
+  isAcceptedImageFile,
+  UNSUPPORTED_IMAGE_MESSAGE,
+} from './product/productSizing';
 import {
   fetchAdminProductById,
   createAdminProduct,
   updateAdminProduct,
   updateAdminProductStatus,
-  deleteAdminProduct,
   deleteAdminProductImage,
   setAdminProductPrimaryImage,
   reorderAdminProductImages,
@@ -14,66 +35,31 @@ import {
   fetchAdminBrands,
   fetchAdminNewInSlots,
   MAX_NEW_IN_PRODUCTS,
-  formatPrice,
   normalizeSneakerSizeValue,
   isSneakersCategory,
-  getOptimizedImageUrl,
-  parsePositiveIntId,
   safeDecodeURIComponent,
 } from '../../../services/api';
 
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB per file
-const MAX_TOTAL_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB per request
+const GENDER_OPTIONS = [
+  { value: 'MEN', label: 'Hombre' },
+  { value: 'WOMEN', label: 'Mujer' },
+  { value: 'UNISEX', label: 'Unisex' },
+];
 
-const QUICK_SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
-const QUICK_SNEAKER_SIZES = ['7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11'];
-const SINGLE_SIZE_NAMES = new Set([
-  'unico',
-  'único',
-  'one size',
-  'onesize',
-  'u',
-  'sin talle',
-]);
+const sortImages = (images) =>
+  [...(images || [])].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
 
-function isSingleSizeLabel(size) {
-  if (!size || typeof size !== 'string') return false;
-  return SINGLE_SIZE_NAMES.has(size.trim().toLowerCase());
-}
-
-function detectInitialSizingMode(variants) {
-  if (!Array.isArray(variants) || variants.length === 0) {
-    return 'multi';
-  }
-  const active = variants.filter((v) => v && v.isActive !== false);
-  if (active.length === 1 && isSingleSizeLabel(active[0].size)) {
-    return 'single';
-  }
-  if (
-    active.length === 0 &&
-    variants.length === 1 &&
-    isSingleSizeLabel(variants[0].size)
-  ) {
-    return 'single';
-  }
-  return 'multi';
-}
-
-// Normalises an id coming from props/URL into a numeric string, or null when invalid.
-function toIdString(value) {
-  const parsed = parsePositiveIntId(value);
-  return parsed === null ? null : String(parsed);
-}
-
-function formatFileSize(bytes) {
-  if (!bytes || bytes <= 0) return '0 KB';
-  if (bytes >= 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-  }
-  return `${Math.round(bytes / 1024)} KB`;
+function moveItem(list, from, to) {
+  const next = [...list];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
 }
 
 /**
+ * Formulario de producto (alta / edición): una pantalla, tres cards + columna lateral.
+ * Piezas en ./product/: ProductPhotosCard, ProductVariantsCard (+ useProductVariants), NewInSlotPicker, ProductStorePreview.
+ *
  * @param {Object} [props]
  * @param {'create'|'edit'} [props.mode]
  * @param {string|number} [props.productId]
@@ -112,119 +98,104 @@ export default function AdminProductFormView({
     setHasResolvedUrl(true);
   }, [propProductId, isEdit]);
 
-  // Loading & Error states
+  // Loading & error states
   const [isLoadingInitial, setIsLoadingInitial] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [categories, setCategories] = useState([]);
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
 
-  // General Product Fields
+  // General product fields
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [descOpen, setDescOpen] = useState(false);
   const [price, setPrice] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [brandId, setBrandId] = useState('');
   const [gender, setGender] = useState('UNISEX');
   const [brands, setBrands] = useState([]);
   const [brandsLoaded, setBrandsLoaded] = useState(false);
-  const [initialBrandSnapshot, setInitialBrandSnapshot] = useState(null);
   const [isActiveProduct, setIsActiveProduct] = useState(true);
+  const [hadNullCategoryOnLoad, setHadNullCategoryOnLoad] = useState(false);
 
   // "Recién ingresados" (home new-in section)
   const [newInEnabled, setNewInEnabled] = useState(false);
   const [newInPosition, setNewInPosition] = useState('');
   const [newInSlots, setNewInSlots] = useState([]);
   const [newInSlotsError, setNewInSlotsError] = useState(null);
-  const [hadNullCategoryOnLoad, setHadNullCategoryOnLoad] = useState(false);
 
-  // Variants & Sizing Mode State
-  // Each item: { localKey, id?: number | null, size: string, stock: number, isActive: boolean, unlockedSizeEdit?: boolean }
-  const [variants, setVariants] = useState([]);
-  const [sizingMode, setSizingMode] = useState('multi'); // 'multi' | 'single'
-  const [variantsDirty, setVariantsDirty] = useState(false);
-
-  // New Variant Input (Multi-size mode)
-  const [newVariantSize, setNewVariantSize] = useState('');
-  const [newVariantStock, setNewVariantStock] = useState('5');
-  const [variantFeedbackError, setVariantFeedbackError] = useState(null);
-
-  // Single-size helper state
-  const [singleSizeLabel, setSingleSizeLabel] = useState('Único');
-
-  // Existing Images (from backend in edit mode)
+  // Images
   const [existingImages, setExistingImages] = useState([]);
   const [isGalleryBusy, setIsGalleryBusy] = useState(false);
-  const [imageToDelete, setImageToDelete] = useState(null);
-
-  // Pending Upload Files (File[] + preview URLs)
   const [queuedFiles, setQueuedFiles] = useState([]);
   const [fileUploadError, setFileUploadError] = useState(null);
 
-  // Form Submission & Status Actions
+  // Submission & status
   const [isSaving, setIsSaving] = useState(false);
-  const [formError, setFormError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
-  const [formSuccess, setFormSuccess] = useState(null);
-
-  // SweetAlert Feedback Modal
-  const [sweetAlert, setSweetAlert] = useState(null);
-  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
-
-  // Deactivate Product Modal
-  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+  const [confirmingHide, setConfirmingHide] = useState(false);
 
-  const syncProductDataToState = useCallback((prod) => {
-    setTitle(prod.title || '');
-    setDescription(prod.description || '');
-    setPrice(prod.price != null ? String(prod.price) : '');
-    setCategoryId(prod.categoryId != null ? String(prod.categoryId) : '');
-    setHadNullCategoryOnLoad(prod.categoryId == null);
-    setBrandId(prod.brandId != null ? String(prod.brandId) : '');
-    setGender(prod.gender || 'UNISEX');
-    setInitialBrandSnapshot(
-      prod.brandId != null
-        ? {
-          id: Number(prod.brandId),
-          name: prod.brandName || `Marca #${prod.brandId}`,
-          slug: prod.brandSlug || '',
-        }
-        : null
-    );
-    setIsActiveProduct(prod.isActive !== false);
-    setNewInEnabled(prod.newInPosition != null);
-    setNewInPosition(prod.newInPosition != null ? String(prod.newInPosition) : '');
+  const selectedCategoryObj = categories.find((c) => String(c.id) === String(categoryId));
+  const isSneakers = isSneakersCategory(selectedCategoryObj);
+  const vm = useProductVariants({ isSneakers });
+  const { loadFromProduct: loadVariantsFromProduct, loadDefaults: loadDefaultVariants } = vm;
 
-    const rawVariants = Array.isArray(prod.variants) ? prod.variants : [];
-    const mappedVariants = rawVariants.map((v, idx) => ({
-      localKey: v.id != null ? `id-${v.id}` : `init-${idx}-${v.size}`,
-      id: v.id != null ? Number(v.id) : null,
-      size: v.size || '',
-      stock: Math.max(0, Number(v.stock) || 0),
-      isActive: v.isActive !== false,
-      unlockedSizeEdit: false,
-    }));
-    setVariants(mappedVariants);
-    setVariantsDirty(false);
+  const clearFieldError = (name) => {
+    if (fieldErrors[name]) setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
+  };
 
-    const detectedMode = detectInitialSizingMode(mappedVariants);
-    setSizingMode(detectedMode);
-    if (detectedMode === 'single') {
-      const singleVar =
-        mappedVariants.find(
-          (v) => v.isActive !== false && isSingleSizeLabel(v.size)
-        ) || mappedVariants.find((v) => isSingleSizeLabel(v.size));
-      if (singleVar) {
-        setSingleSizeLabel(singleVar.size);
-      }
-    }
+  // ---- "Cambios sin guardar": se compara contra una foto del estado limpio ----
+  const snapshot = JSON.stringify({
+    title,
+    description,
+    price,
+    categoryId,
+    brandId,
+    gender,
+    newInEnabled,
+    newInPosition,
+    variants: vm.variants.map((v) => [v.id, v.size, v.stock, v.isActive]),
+    queued: queuedFiles.map((q) => q.id),
+  });
+  const [baseline, setBaseline] = useState(null);
+  const [rebaseTick, setRebaseTick] = useState(0);
+  useEffect(() => {
+    if (rebaseTick > 0) setBaseline(snapshot);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rebaseTick]);
+  const markClean = () => setRebaseTick((n) => n + 1);
+  const isDirty = baseline !== null && snapshot !== baseline;
 
-    const rawImages = Array.isArray(prod.images) ? prod.images : [];
-    const sortedImages = [...rawImages].sort(
-      (a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)
-    );
-    setExistingImages(sortedImages);
-  }, []);
+  const skipUnloadGuardRef = useRef(false);
+  useEffect(() => {
+    if (!isDirty) return undefined;
+    const handler = (e) => {
+      if (skipUnloadGuardRef.current) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  const syncProductDataToState = useCallback(
+    (prod) => {
+      setTitle(prod.title || '');
+      setDescription(prod.description || '');
+      setDescOpen(Boolean(prod.description && prod.description.trim()));
+      setPrice(prod.price != null ? String(prod.price) : '');
+      setCategoryId(prod.categoryId != null ? String(prod.categoryId) : '');
+      setHadNullCategoryOnLoad(prod.categoryId == null);
+      setBrandId(prod.brandId != null ? String(prod.brandId) : '');
+      setGender(prod.gender || 'UNISEX');
+      setIsActiveProduct(prod.isActive !== false);
+      setNewInEnabled(prod.newInPosition != null);
+      setNewInPosition(prod.newInPosition != null ? String(prod.newInPosition) : '');
+      loadVariantsFromProduct(prod.variants);
+      setExistingImages(sortImages(prod.images));
+    },
+    [loadVariantsFromProduct]
+  );
 
   // Occupied "Recién ingresados" positions; failures only disable the picker, never the form.
   const loadNewInSlots = useCallback(async () => {
@@ -273,38 +244,17 @@ export default function AdminProductFormView({
         syncProductDataToState(prod);
       } else {
         const [cats, allBrands] = await Promise.all([catsPromise, brandsPromise]);
-        setCategories(Array.isArray(cats) ? cats : []);
+        const catList = Array.isArray(cats) ? cats : [];
+        setCategories(catList);
         setCategoriesLoaded(true);
         setBrands(Array.isArray(allBrands) ? allBrands : []);
         setBrandsLoaded(true);
-        if (Array.isArray(cats) && cats.length > 0) {
-          setCategoryId(String(cats[0].id));
-          const firstCatIsSneakers = isSneakersCategory(cats[0]);
-          if (firstCatIsSneakers) {
-            setVariants([
-              { localKey: 'new-8', id: null, size: '8', stock: 5, isActive: true },
-              { localKey: 'new-8.5', id: null, size: '8.5', stock: 8, isActive: true },
-              { localKey: 'new-9', id: null, size: '9', stock: 5, isActive: true },
-            ]);
-          } else {
-            setVariants([
-              { localKey: 'new-S', id: null, size: 'S', stock: 5, isActive: true },
-              { localKey: 'new-M', id: null, size: 'M', stock: 8, isActive: true },
-              { localKey: 'new-L', id: null, size: 'L', stock: 5, isActive: true },
-            ]);
-          }
-        } else {
-          // Default initial sizes for new product creation
-          setVariants([
-            { localKey: 'new-S', id: null, size: 'S', stock: 5, isActive: true },
-            { localKey: 'new-M', id: null, size: 'M', stock: 8, isActive: true },
-            { localKey: 'new-L', id: null, size: 'L', stock: 5, isActive: true },
-          ]);
-        }
+        if (catList.length > 0) setCategoryId(String(catList[0].id));
+        loadDefaultVariants(catList.length > 0 && isSneakersCategory(catList[0]));
         setBrandId('');
         setGender('UNISEX');
-        setVariantsDirty(true);
       }
+      markClean();
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
@@ -317,7 +267,8 @@ export default function AdminProductFormView({
     } finally {
       setIsLoadingInitial(false);
     }
-  }, [isEdit, hasResolvedUrl, resolvedId, syncProductDataToState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit, hasResolvedUrl, resolvedId, syncProductDataToState, loadNewInSlots, loadDefaultVariants]);
 
   useEffect(() => {
     loadFormResources();
@@ -344,29 +295,16 @@ export default function AdminProductFormView({
     };
   }, [revokeAllPreviewUrls]);
 
-  // Real-time Active Stock calculation
-  const totalActiveStock = variants
-    .filter((v) => v.isActive !== false)
-    .reduce((sum, v) => sum + (Math.max(0, Number(v.stock) || 0)), 0);
-
-  const activeVariants = variants.filter((v) => v.isActive !== false);
-  const inactiveVariants = variants.filter((v) => v.isActive === false);
-
-  // Active brands sorted alphabetically for product selector
+  // Active brands sorted alphabetically for the selector
   const activeBrands = brands
     .filter((b) => b.isActive !== false)
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-
   const currentProductBrandInList = brandId
     ? brands.find((b) => String(b.id) === String(brandId))
     : null;
-
   const isCurrentBrandInactive = Boolean(
     currentProductBrandInList && currentProductBrandInList.isActive === false
   );
-
-  const selectedCategoryObj = categories.find((c) => String(c.id) === String(categoryId));
-  const isSneakers = isSneakersCategory(selectedCategoryObj);
 
   // "Recién ingresados": positions taken by OTHER products (this product's own slot stays selectable)
   const newInTakenByOthers = new Map(
@@ -374,261 +312,34 @@ export default function AdminProductFormView({
       .filter((s) => !isEdit || String(s.productId) !== String(resolvedId))
       .map((s) => [Number(s.position), s])
   );
-  const newInPositions = Array.from({ length: MAX_NEW_IN_PRODUCTS }, (_, i) => i + 1);
-  const newInFreePositions = newInPositions.filter((p) => !newInTakenByOthers.has(p));
-  const isNewInFull = newInFreePositions.length === 0;
-  const newInOccupiedCount = newInSlots.length;
+  const newInFreePositions = Array.from({ length: MAX_NEW_IN_PRODUCTS }, (_, i) => i + 1).filter(
+    (p) => !newInTakenByOthers.has(p)
+  );
 
   const handleToggleNewIn = (checked) => {
     setNewInEnabled(checked);
     if (checked && !newInPosition && newInFreePositions.length > 0) {
       setNewInPosition(String(newInFreePositions[0]));
     }
-    if (fieldErrors.newInPosition) {
-      setFieldErrors((prev) => ({ ...prev, newInPosition: undefined }));
-    }
+    clearFieldError('newInPosition');
   };
 
-  // Switch between Multi-size and Single-size ('Único' / 'One Size')
-  const handleSwitchSizingMode = (nextMode) => {
-    if (nextMode === sizingMode) return;
-    setVariantFeedbackError(null);
-    setSizingMode(nextMode);
-    setVariantsDirty(true);
-
-    if (nextMode === 'single') {
-      setVariants((prev) => {
-        // Keep all existing DB variants (with id), deactivating non-single ones
-        const existingSingleIdx = prev.findIndex((v) =>
-          isSingleSizeLabel(v.size)
-        );
-
-        if (existingSingleIdx !== -1) {
-          return prev.map((v, idx) =>
-            idx === existingSingleIdx
-              ? { ...v, isActive: true, stock: v.stock > 0 ? v.stock : 10 }
-              : v.id != null
-                ? { ...v, isActive: false }
-                : null
-          ).filter(Boolean);
-        }
-
-        // Preserve any DB variants as inactive so historical IDs are never lost
-        const deactivatedDbVariants = prev
-          .filter((v) => v.id != null)
-          .map((v) => ({ ...v, isActive: false }));
-
-        return [
-          ...deactivatedDbVariants,
-          {
-            localKey: `single-${Date.now()}`,
-            id: null,
-            size: singleSizeLabel || 'Único',
-            stock: 10,
-            isActive: true,
-          },
-        ];
-      });
-    } else {
-      // Switching to 'multi' mode: if only an unsaved single variant exists, replace with S/M/L
-      setVariants((prev) => {
-        const hasOnlyUnsavedSingle =
-          prev.length === 1 &&
-          prev[0].id == null &&
-          isSingleSizeLabel(prev[0].size);
-        if (hasOnlyUnsavedSingle) {
-          return [
-            { localKey: 'new-S', id: null, size: 'S', stock: 5, isActive: true },
-            { localKey: 'new-M', id: null, size: 'M', stock: 8, isActive: true },
-            { localKey: 'new-L', id: null, size: 'L', stock: 5, isActive: true },
-          ];
-        }
-        return prev;
-      });
-    }
-  };
-
-  const handleSingleSizeLabelChange = (nextLabel) => {
-    setSingleSizeLabel(nextLabel);
-    setVariantsDirty(true);
-    setVariants((prev) => {
-      const target = prev.find((v) => v.isActive !== false);
-      // If the active single variant already has a DB ID, check if another DB variant with nextLabel exists
-      if (target && target.id == null) {
-        return prev.map((v) =>
-          v.localKey === target.localKey ? { ...v, size: nextLabel } : v
-        );
-      }
-      return prev;
-    });
-  };
-
-  const handleSingleSizeStockChange = (nextStockStr) => {
-    const cleanStock = Math.max(0, parseInt(nextStockStr, 10) || 0);
-    setVariantsDirty(true);
-    setVariants((prev) => {
-      const activeIdx = prev.findIndex((v) => v.isActive !== false);
-      if (activeIdx !== -1) {
-        return prev.map((v, idx) =>
-          idx === activeIdx ? { ...v, stock: cleanStock } : v
-        );
-      }
-      return [
-        ...prev,
-        {
-          localKey: `single-${Date.now()}`,
-          id: null,
-          size: singleSizeLabel || 'Único',
-          stock: cleanStock,
-          isActive: true,
-        },
-      ];
-    });
-  };
-
-  const handleAddVariant = (sizeToAdd, stockToAdd = newVariantStock) => {
-    setVariantFeedbackError(null);
-    let normalized = String(sizeToAdd || '').trim();
-    if (isSneakers) {
-      normalized = normalizeSneakerSizeValue(normalized);
-    }
-    if (!normalized) {
-      setVariantFeedbackError(
-        isSneakers
-          ? 'Ingresá un talle (ej. 7, 7.5, 8.5, 6.5Y (25 CM)).'
-          : 'Ingresá el nombre del talle (ej. S, M, L, 42).'
-      );
-      return;
-    }
-    if (normalized.length > 50) {
-      setVariantFeedbackError('El talle no puede superar los 50 caracteres.');
-      return;
-    }
-
-    const parsedStock = Math.max(0, parseInt(String(stockToAdd), 10) || 0);
-
-    // Check if an active variant with the same size already exists
-    const duplicateActive = variants.find(
-      (v) =>
-        v.isActive !== false &&
-        (isSneakers
-          ? normalizeSneakerSizeValue(v.size) === normalized
-          : v.size.trim().toUpperCase() === normalized.toUpperCase())
-    );
-    if (duplicateActive) {
-      setVariantFeedbackError(
-        `Ya existe una variante activa para el talle "${duplicateActive.size}". Podés modificar su stock directamente.`
-      );
-      return;
-    }
-
-    // Check if an inactive variant with the same size already exists -> reactivate it preserving its ID!
-    const existingInactive = variants.find(
-      (v) =>
-        v.isActive === false &&
-        (isSneakers
-          ? normalizeSneakerSizeValue(v.size) === normalized
-          : v.size.trim().toUpperCase() === normalized.toUpperCase())
-    );
-    if (existingInactive) {
-      setVariants((prev) =>
-        prev.map((v) =>
-          v.localKey === existingInactive.localKey
-            ? { ...v, isActive: true, stock: parsedStock }
-            : v
-        )
-      );
-      setVariantsDirty(true);
-      setNewVariantSize('');
-      return;
-    }
-
-    setVariants((prev) => [
-      ...prev,
-      {
-        localKey: `new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        id: null,
-        size: normalized,
-        stock: parsedStock,
-        isActive: true,
-      },
-    ]);
-    setVariantsDirty(true);
-    setNewVariantSize('');
-  };
-
-  const handleVariantStockChange = (localKey, nextVal) => {
-    const parsed = Math.max(0, parseInt(String(nextVal), 10) || 0);
-    setVariantsDirty(true);
-    setVariants((prev) =>
-      prev.map((v) => (v.localKey === localKey ? { ...v, stock: parsed } : v))
-    );
-  };
-
-  const handleVariantSizeChange = (localKey, nextSize) => {
-    setVariantFeedbackError(null);
-    setVariantsDirty(true);
-    setVariants((prev) =>
-      prev.map((v) => (v.localKey === localKey ? { ...v, size: nextSize } : v))
-    );
-  };
-
-  const handleDeactivateVariant = (localKey) => {
-    setVariantFeedbackError(null);
-    setVariantsDirty(true);
-    setVariants((prev) =>
-      prev.map((v) =>
-        v.localKey === localKey ? { ...v, isActive: false } : v
-      )
-    );
-  };
-
-  const handleReactivateVariant = (localKey) => {
-    setVariantFeedbackError(null);
-    const target = variants.find((v) => v.localKey === localKey);
-    if (!target) return;
-
-    const duplicateActive = variants.find(
-      (v) =>
-        v.localKey !== localKey &&
-        v.isActive !== false &&
-        v.size.trim().toUpperCase() === target.size.trim().toUpperCase()
-    );
-    if (duplicateActive) {
-      setVariantFeedbackError(
-        `No se puede reactivar el talle "${target.size}" porque ya existe otra variante activa con ese mismo talle.`
-      );
-      return;
-    }
-
-    setVariantsDirty(true);
-    setVariants((prev) =>
-      prev.map((v) => (v.localKey === localKey ? { ...v, isActive: true } : v))
-    );
-  };
-
-  const handleRemoveUnsavedVariant = (localKey) => {
-    setVariantFeedbackError(null);
-    setVariantsDirty(true);
-    setVariants((prev) =>
-      prev.filter((v) => !(v.localKey === localKey && v.id == null))
-    );
-  };
-
-  // File Selection & Previews Validation (10 MB per file / 10 MB total)
+  // ---- Files (10 MB per file / 10 MB per request) ----
   const handleFileSelect = (e) => {
     setFileUploadError(null);
     const selectedList = Array.from(e.target.files || []);
     if (selectedList.length === 0) return;
 
-    const currentTotalBytes = queuedFiles.reduce(
-      (sum, item) => sum + (item.file?.size || 0),
-      0
-    );
+    const currentTotalBytes = queuedFiles.reduce((sum, item) => sum + (item.file?.size || 0), 0);
     let addedBytes = 0;
     const validFiles = [];
 
     for (const file of selectedList) {
+      if (!isAcceptedImageFile(file)) {
+        setFileUploadError(UNSUPPORTED_IMAGE_MESSAGE);
+        e.target.value = '';
+        return;
+      }
       if (file.size > MAX_FILE_SIZE_BYTES) {
         setFileUploadError(
           `El archivo "${file.name}" (${formatFileSize(
@@ -641,7 +352,7 @@ export default function AdminProductFormView({
       addedBytes += file.size;
       if (currentTotalBytes + addedBytes > MAX_TOTAL_UPLOAD_BYTES) {
         setFileUploadError(
-          `El peso combinado de las fotografías seleccionadas supera el límite de 10 MB por petición del servidor.`
+          'El peso combinado de las fotografías seleccionadas supera el límite de 10 MB por petición del servidor.'
         );
         e.target.value = '';
         return;
@@ -667,194 +378,153 @@ export default function AdminProductFormView({
   const handleRemoveQueuedFile = (itemId) => {
     setFileUploadError(null);
     const target = queuedFiles.find((i) => i.id === itemId);
-    if (target?.previewUrl) {
-      revokePreviewUrl(target.previewUrl);
-    }
+    if (target?.previewUrl) revokePreviewUrl(target.previewUrl);
     setQueuedFiles((prev) => prev.filter((i) => i.id !== itemId));
   };
 
-  // Gallery API Operations (Edit Mode)
-  const handleSetPrimaryImage = async (imageId) => {
+  const handleReorderQueued = (from, to) => {
+    setQueuedFiles((prev) => moveItem(prev, from, to));
+  };
+
+  // ---- Gallery API operations (immediate, edit mode only) ----
+  const runGalleryAction = async (action, successMessage, fallbackError) => {
     if (!isEdit || !resolvedId || isGalleryBusy) return;
     setIsGalleryBusy(true);
-    setFormError(null);
-    setFormSuccess(null);
-
     try {
-      const updatedProduct = await setAdminProductPrimaryImage(
-        resolvedId,
-        imageId
-      );
-      const sorted = [...(updatedProduct.images || [])].sort(
-        (a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)
-      );
-      setExistingImages(sorted);
-      setFormSuccess('Se actualizó la fotografía de portada correctamente.');
+      const updatedProduct = await action();
+      setExistingImages(sortImages(updatedProduct.images));
+      if (successMessage) toast.success(successMessage);
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      setFormError(
-        err?.message || 'No se pudo cambiar la fotografía principal.'
-      );
+      toast.error(err?.message || fallbackError);
     } finally {
       setIsGalleryBusy(false);
     }
   };
 
-  const handleMoveImage = async (index, direction) => {
-    if (!isEdit || !resolvedId || isGalleryBusy) return;
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= existingImages.length) return;
+  const handleSetPrimaryImage = (imageId) =>
+    runGalleryAction(
+      () => setAdminProductPrimaryImage(resolvedId, imageId),
+      'Se actualizó la portada.',
+      'No se pudo cambiar la fotografía principal.'
+    );
 
-    const reordered = [...existingImages];
-    const [moved] = reordered.splice(index, 1);
-    reordered.splice(targetIndex, 0, moved);
-
-    const imageIds = reordered.map((img) => Number(img.id));
-
-    setIsGalleryBusy(true);
-    setFormError(null);
-    setFormSuccess(null);
-
-    try {
-      const updatedProduct = await reorderAdminProductImages(
-        resolvedId,
-        imageIds
-      );
-      const sorted = [...(updatedProduct.images || [])].sort(
-        (a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)
-      );
-      setExistingImages(sorted);
-      setFormSuccess('El orden de la galería fue actualizado.');
-    } catch (err) {
-      if (err?.status === 401) {
-        window.location.replace('/admin/login?reason=expired');
-        return;
-      }
-      setFormError(err?.message || 'No se pudo reordenar la galería.');
-    } finally {
-      setIsGalleryBusy(false);
-    }
+  // Reordena la galería ya subida con UNA llamada que envía la lista completa de ids en el nuevo orden
+  const handleReorderExisting = (from, to) => {
+    if (from === to || to < 0 || to >= existingImages.length) return;
+    const imageIds = moveItem(existingImages, from, to).map((img) => Number(img.id));
+    return runGalleryAction(
+      () => reorderAdminProductImages(resolvedId, imageIds),
+      'Orden de fotos actualizado.',
+      'No se pudo reordenar la galería.'
+    );
   };
 
-  const handleConfirmDeleteImage = async () => {
-    if (!isEdit || !resolvedId || !imageToDelete || isGalleryBusy) return;
-    setIsGalleryBusy(true);
-    setFormError(null);
-    setFormSuccess(null);
+  const handleDeleteExistingImage = (imageId) =>
+    runGalleryAction(
+      () => deleteAdminProductImage(resolvedId, imageId),
+      'Foto eliminada.',
+      'No se pudo eliminar la fotografía seleccionada.'
+    );
 
-    try {
-      const updatedProduct = await deleteAdminProductImage(
-        resolvedId,
-        imageToDelete.id
-      );
-      const sorted = [...(updatedProduct.images || [])].sort(
-        (a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)
-      );
-      setExistingImages(sorted);
-      setImageToDelete(null);
-      setFormSuccess(
-        'Fotografía eliminada. La galería y la portada se actualizaron automáticamente.'
-      );
-    } catch (err) {
-      if (err?.status === 401) {
-        window.location.replace('/admin/login?reason=expired');
-        return;
-      }
-      setFormError(
-        err?.message || 'No se pudo eliminar la fotografía seleccionada.'
-      );
-      setImageToDelete(null);
-    } finally {
-      setIsGalleryBusy(false);
-    }
-  };
-
-  // Toggle Product Active Status in Edit Mode
+  // ---- Visibility (single path: updateAdminProductStatus) ----
   const handleToggleProductActive = async (nextActive) => {
     if (!isEdit || !resolvedId || isTogglingStatus) return;
     setIsTogglingStatus(true);
-    setFormError(null);
-    setFormSuccess(null);
-
     try {
       const updated = await updateAdminProductStatus(resolvedId, nextActive);
       setIsActiveProduct(updated.isActive !== false);
-      setShowDeactivateModal(false);
-      setFormSuccess(
-        `El producto fue ${updated.isActive !== false ? 'activado' : 'desactivado'
-        } exitosamente.`
+      setConfirmingHide(false);
+      toast.success(
+        updated.isActive !== false
+          ? 'El producto vuelve a estar visible en la tienda.'
+          : 'El producto quedó oculto de la tienda.'
       );
     } catch (err) {
       if (err?.status === 401) {
         window.location.replace('/admin/login?reason=expired');
         return;
       }
-      setFormError(
-        err?.message || 'No se pudo cambiar el estado del producto.'
-      );
-      setShowDeactivateModal(false);
+      toast.error(err?.message || 'No se pudo cambiar el estado del producto.');
+      setConfirmingHide(false);
     } finally {
       setIsTogglingStatus(false);
     }
   };
 
-  // Main Save Handler (Create / Edit)
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleVisibilityChange = (next) => {
+    if (next) handleToggleProductActive(true);
+    else setConfirmingHide(true);
+  };
+
+  const failValidation = (message, field) => {
+    if (field) setFieldErrors((prev) => ({ ...prev, [field]: message }));
+    toast.error(message, { title: 'Revisá el formulario' });
+    if (field) {
+      const ids = { title: 'product-title', price: 'product-price', categoryId: 'product-category', brandId: 'product-brand' };
+      requestAnimationFrame(() => document.getElementById(ids[field])?.focus());
+    }
+  };
+
+  const resetFormForNext = () => {
+    // Se mantienen categoría, marca y género (cargas masivas); el resto vuelve a cero
+    setTitle('');
+    setDescription('');
+    setDescOpen(false);
+    setPrice('');
+    setNewInEnabled(false);
+    setNewInPosition('');
+    setFieldErrors({});
+    setFileUploadError(null);
+    loadDefaultVariants(isSneakers);
+    markClean();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    requestAnimationFrame(() => document.getElementById('product-title')?.focus());
+  };
+
+  // ---- Main save handler (create / edit / create and start another) ----
+  const handleSubmit = async (e, { andNew = false } = {}) => {
+    e?.preventDefault?.();
     if (isSaving) return;
 
-    setFormError(null);
     setFieldErrors({});
-    setFormSuccess(null);
-    setVariantFeedbackError(null);
+    vm.setFeedbackError(null);
 
     if (categoriesLoaded && categories.length === 0) {
-      setFormError(
+      toast.error(
         'No se puede guardar el producto porque todavía no hay categorías configuradas en el backend.'
       );
       return;
     }
 
     const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      const msg = 'El nombre del producto es obligatorio.';
-      setFieldErrors({ title: msg });
-      setFormError(msg);
-      return;
-    }
+    if (!trimmedTitle) return failValidation('El nombre del producto es obligatorio.', 'title');
     if (trimmedTitle.length > 200) {
-      const msg = 'El nombre del producto no puede superar los 200 caracteres.';
-      setFieldErrors({ title: msg });
-      setFormError(msg);
-      return;
+      return failValidation('El nombre del producto no puede superar los 200 caracteres.', 'title');
     }
 
     const numericPrice = Number(price);
     if (!price || Number.isNaN(numericPrice) || numericPrice <= 0) {
-      const msg = 'Ingresá un precio válido mayor a cero.';
-      setFieldErrors({ price: msg });
-      setFormError(msg);
-      return;
+      return failValidation('Ingresá un precio válido mayor a cero.', 'price');
     }
 
     const numericCategoryId = Number(categoryId);
     if (!categoryId || Number.isNaN(numericCategoryId) || numericCategoryId <= 0) {
-      const msg =
-        'Debés seleccionar una categoría válida antes de guardar el producto.';
-      setFieldErrors({ categoryId: msg });
-      setFormError(msg);
-      return;
+      return failValidation(
+        'Debés seleccionar una categoría válida antes de guardar el producto.',
+        'categoryId'
+      );
     }
 
-    // Check inactive brand validation (both in creation and edition)
+    // Inactive brand validation (both in creation and edition)
     if (isCurrentBrandInactive && currentProductBrandInList) {
-      const msg = `La marca seleccionada ("${currentProductBrandInList.name}") está inactiva. Para guardar cambios, reactivala en Marcas o seleccioná "Sin marca" u otra marca activa.`;
-      setFieldErrors((prev) => ({ ...prev, brandId: msg }));
-      setFormError(msg);
-      return;
+      return failValidation(
+        `La marca seleccionada ("${currentProductBrandInList.name}") está inactiva. Para guardar cambios, reactivala en Marcas o seleccioná "Sin marca" u otra marca activa.`,
+        'brandId'
+      );
     }
 
     // "Recién ingresados" position
@@ -862,51 +532,48 @@ export default function AdminProductFormView({
     if (newInEnabled) {
       const pos = Number(newInPosition);
       if (!Number.isInteger(pos) || pos < 1 || pos > MAX_NEW_IN_PRODUCTS) {
-        const msg = `Elegí una posición de Recién ingresados entre 1 y ${MAX_NEW_IN_PRODUCTS}.`;
-        setFieldErrors((prev) => ({ ...prev, newInPosition: msg }));
-        setFormError(msg);
-        return;
+        return failValidation(
+          `Elegí una posición de Recién ingresados entre 1 y ${MAX_NEW_IN_PRODUCTS}.`,
+          'newInPosition'
+        );
       }
       const takenBy = newInTakenByOthers.get(pos);
       if (takenBy) {
-        const msg = `La posición ${pos} de Recién ingresados ya está ocupada por "${takenBy.title}". Elegí otra.`;
-        setFieldErrors((prev) => ({ ...prev, newInPosition: msg }));
-        setFormError(msg);
-        return;
+        return failValidation(
+          `La posición ${pos} de Recién ingresados ya está ocupada por "${takenBy.title}". Elegí otra.`,
+          'newInPosition'
+        );
       }
       resolvedNewInPosition = pos;
     }
 
     // Validate variants if creating or if variants were modified
-    const shouldSendVariants = !isEdit || variantsDirty;
+    const shouldSendVariants = !isEdit || vm.variantsDirty;
     if (shouldSendVariants) {
-      for (const v of variants) {
+      for (const v of vm.variants) {
         if (!v.size || !v.size.trim()) {
-          setFormError(
-            'Todas las variantes deben tener un nombre de talle válido.'
-          );
-          return;
+          const msg = 'Todas las variantes deben tener un nombre de talle válido.';
+          vm.setFeedbackError(msg);
+          return failValidation(msg);
         }
         if (Number(v.stock) < 0 || Number.isNaN(Number(v.stock))) {
-          setFormError(
-            `El stock del talle "${v.size}" no puede ser negativo.`
-          );
-          return;
+          const msg = `El stock del talle "${v.size}" no puede ser negativo.`;
+          vm.setFeedbackError(msg);
+          return failValidation(msg);
         }
       }
 
-      // Check duplicate active sizes
+      // Duplicate active sizes
       const seenActive = new Set();
-      for (const v of variants) {
+      for (const v of vm.variants) {
         if (v.isActive !== false) {
           const key = isSneakers
             ? normalizeSneakerSizeValue(v.size)
             : v.size.trim().toUpperCase();
           if (seenActive.has(key)) {
-            setFormError(
-              `No pueden existir dos variantes activas con el mismo talle ("${v.size.trim()}").`
-            );
-            return;
+            const msg = `No pueden existir dos variantes activas con el mismo talle ("${v.size.trim()}").`;
+            vm.setFeedbackError(msg);
+            return failValidation(msg);
           }
           seenActive.add(key);
         }
@@ -926,53 +593,41 @@ export default function AdminProductFormView({
         gender: gender || 'UNISEX',
         newInPosition: resolvedNewInPosition,
         variants: shouldSendVariants
-          ? variants.map((v) => ({
-            id: v.id != null ? Number(v.id) : undefined,
-            size: isSneakers && v.id == null
-              ? normalizeSneakerSizeValue(v.size.trim())
-              : v.size.trim(),
-            stock: Math.max(0, Number(v.stock) || 0),
-            isActive: v.isActive !== false,
-          }))
+          ? vm.variants.map((v) => ({
+              id: v.id != null ? Number(v.id) : undefined,
+              size:
+                isSneakers && v.id == null
+                  ? normalizeSneakerSizeValue(v.size.trim())
+                  : v.size.trim(),
+              stock: Math.max(0, Number(v.stock) || 0),
+              isActive: v.isActive !== false,
+            }))
           : undefined,
       };
 
       if (isEdit) {
-        const updated = await updateAdminProduct(
-          resolvedId,
-          payload,
-          filesToSend
-        );
+        const updated = await updateAdminProduct(resolvedId, payload, filesToSend);
         // Clear queued files after successful upload
         revokeAllPreviewUrls();
         setQueuedFiles([]);
         syncProductDataToState(updated);
         loadNewInSlots();
-        setFormSuccess(
-          'Los cambios del producto fueron guardados correctamente.'
-        );
-        setSweetAlert({
-          isOpen: true,
-          type: 'success',
-          title: '¡Producto modificado!',
-          message: 'Todos los cambios del producto fueron guardados correctamente.',
-          autoCloseMs: 3000,
-          onConfirm: () => setSweetAlert(null),
-        });
+        markClean();
+        toast.success('Los cambios se guardaron correctamente.', { title: 'Producto guardado' });
       } else {
         const created = await createAdminProduct(payload, filesToSend);
         revokeAllPreviewUrls();
         setQueuedFiles([]);
-        setSweetAlert({
-          isOpen: true,
-          type: 'success',
-          title: '¡Producto creado!',
-          message: `El producto "${created.title}" se creó exitosamente. Redirigiendo a edición...`,
-          autoCloseMs: 2000,
-          onConfirm: () => {
-            window.location.replace(`/admin/products/${created.id}/edit?created=1`);
-          },
-        });
+        if (andNew) {
+          toast.success(`"${created.title}" se creó. Ya podés cargar otro producto.`, {
+            title: 'Producto creado',
+          });
+          loadNewInSlots();
+          resetFormForNext();
+        } else {
+          skipUnloadGuardRef.current = true;
+          window.location.replace('/admin/products?created=1');
+        }
       }
     } catch (err) {
       if (err?.status === 401) {
@@ -986,363 +641,149 @@ export default function AdminProductFormView({
         // e.g. another admin took the chosen "Recién ingresados" position meanwhile
         loadNewInSlots();
       }
-      const errorText =
+      toast.error(
         err?.message ||
-        'No se pudo guardar el producto. Revisá los datos ingresados e intentá nuevamente.';
-      setFormError(errorText);
-      setSweetAlert({
-        isOpen: true,
-        type: 'error',
-        title: 'Error al guardar',
-        message: errorText,
-        onConfirm: () => setSweetAlert(null),
-      });
+          'No se pudo guardar el producto. Revisá los datos ingresados e intentá nuevamente.',
+        { title: 'No se pudo guardar' }
+      );
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDeleteProductClick = () => {
-    setSweetAlert({
-      isOpen: true,
-      type: 'confirm',
-      title: '¿Desactivar este producto?',
-      message: `El producto #${resolvedId} ("${title || 'Sin título'}") se va a desactivar y quedará oculto del catálogo. No se borra de la base de datos y podés volver a activarlo cuando quieras.`,
-      confirmText: 'Sí, desactivar',
-      cancelText: 'Cancelar',
-      onCancel: () => setSweetAlert(null),
-      onConfirm: async () => {
-        try {
-          setIsDeletingProduct(true);
-          await deleteAdminProduct(resolvedId);
-          setSweetAlert({
-            isOpen: true,
-            type: 'success',
-            title: '¡Producto desactivado!',
-            message: 'El producto fue desactivado y quedó oculto del catálogo.',
-            autoCloseMs: 2000,
-            onConfirm: () => {
-              window.location.replace('/admin/products?deleted=1');
-            },
-          });
-        } catch (err) {
-          setSweetAlert({
-            isOpen: true,
-            type: 'error',
-            title: 'Error al desactivar',
-            message: err?.message || 'No se pudo desactivar el producto.',
-            onConfirm: () => setSweetAlert(null),
-          });
-        } finally {
-          setIsDeletingProduct(false);
+  const noCategories = categoriesLoaded && categories.length === 0;
+  const saveDisabled = isSaving || noCategories;
+  const pageTitle = isEdit ? title || `Producto #${resolvedId}` : title || 'Nuevo producto';
+
+  const saveButtons = (extraClass = '') => (
+    <>
+      {!isEdit && (
+        <Button
+          variant="secondary"
+          disabled={saveDisabled}
+          onClick={() => handleSubmit(null, { andNew: true })}
+          className={extraClass}
+        >
+          Guardar y crear otro
+        </Button>
+      )}
+      <Button type="submit" loading={isSaving} loadingText="Guardando…" disabled={noCategories} className={extraClass}>
+        {isEdit ? 'Guardar cambios' : 'Crear producto'}
+      </Button>
+    </>
+  );
+
+  const menuItems = [
+    isActiveProduct && {
+      key: 'view',
+      label: 'Ver en la tienda ↗',
+      href: `/products/${resolvedId}`,
+      external: true,
+    },
+    isActiveProduct
+      ? {
+          key: 'hide',
+          label: 'Desactivar producto…',
+          danger: true,
+          disabled: isTogglingStatus,
+          confirm: {
+            message: 'Se oculta de la tienda. No se borra nada y lo podés reactivar.',
+            confirmLabel: 'Desactivar',
+          },
+          onSelect: () => handleToggleProductActive(false),
         }
-      },
-    });
-  };
+      : {
+          key: 'show',
+          label: 'Reactivar producto',
+          disabled: isTogglingStatus,
+          onSelect: () => handleToggleProductActive(true),
+        },
+  ].filter(Boolean);
 
-  useEffect(() => {
-    if (isEdit && typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('created') === '1') {
-        setFormSuccess(
-          'Producto creado exitosamente. Ya podés gestionar su galería e inventario.'
-        );
-        setSweetAlert({
-          isOpen: true,
-          type: 'success',
-          title: '¡Producto creado!',
-          message: 'El artículo fue creado con éxito. Ya podés gestionar sus imágenes, talles y stock.',
-          autoCloseMs: 3500,
-          onConfirm: () => setSweetAlert(null),
-        });
-        params.delete('created');
-        const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''
-          }`;
-        window.history.replaceState({}, '', cleanUrl);
-      }
-    }
-  }, [isEdit]);
-
-  const activeSingleVariant =
-    sizingMode === 'single'
-      ? variants.find((v) => v.isActive !== false) || null
-      : null;
+  // Preview data
+  const coverExisting = existingImages.find((img) => img.isPrimary) || existingImages[0];
+  const previewImage = coverExisting?.imageUrl || queuedFiles[0]?.previewUrl || '';
+  const previewBrand = brands.find((b) => String(b.id) === String(brandId))?.name;
 
   return (
     <AdminShell activeSection="products">
-      {/* Top Breadcrumb */}
-      <nav className="mb-6" aria-label="Breadcrumb">
-        <ol className="flex items-center flex-wrap gap-2 text-xs text-brand-dark/55">
-          <li>
-            <a
-              href="/admin"
-              className="hover:text-brand-dark transition-colors"
-            >
-              Dashboard
-            </a>
-          </li>
-          <li aria-hidden="true">/</li>
-          <li>
-            <a
-              href="/admin/products"
-              className="hover:text-brand-dark transition-colors"
-            >
-              Products
-            </a>
-          </li>
-          <li aria-hidden="true">/</li>
-          <li className="font-mono font-semibold text-brand-dark">
-            {isEdit
-              ? `Editar Producto #${resolvedId || ''}`
-              : 'Nuevo Producto'}
-          </li>
-        </ol>
-      </nav>
-
-      {/* Loading State */}
       {isLoadingInitial && (
-        <div className="space-y-6 animate-pulse">
-          <div className="h-20 w-full bg-[#F2F2F0] rounded-xs" />
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div className="lg:col-span-7 h-96 bg-[#F2F2F0] rounded-xs" />
-            <div className="lg:col-span-5 h-96 bg-[#F2F2F0] rounded-xs" />
+        <div className="animate-pulse space-y-5" role="status" aria-label="Cargando">
+          <div className="h-14 rounded-card bg-white shadow-hairline" />
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+            <div className="h-96 rounded-card bg-white shadow-hairline lg:col-span-8" />
+            <div className="h-72 rounded-card bg-white shadow-hairline lg:col-span-4" />
           </div>
         </div>
       )}
 
-      {/* 404 Not Found State */}
       {!isLoadingInitial && loadError?.isNotFound && (
-        <div className="py-16 px-6 text-center bg-[#FAF9F6]/90 border border-brand-dark/12 rounded-xs space-y-4">
-          <p className="text-xs font-mono uppercase tracking-widest text-brand-dark/45">
-            Error 404
-          </p>
-          <h1 className="text-xl sm:text-2xl font-bold text-brand-dark">
-            Producto no encontrado
-          </h1>
-          <p className="text-xs sm:text-sm text-brand-dark/65 max-w-md mx-auto">
-            {loadError.message}
-          </p>
-          <div className="pt-2">
-            <a
-              href="/admin/products"
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs"
-            >
-              ← Volver al listado de productos
-            </a>
-          </div>
-        </div>
+        <EmptyState
+          icon="box"
+          title="Producto no encontrado"
+          description={loadError.message}
+          action={<Button href="/admin/products">Volver a productos</Button>}
+        />
       )}
 
-      {/* General Load Error */}
       {!isLoadingInitial && loadError && !loadError.isNotFound && (
-        <div className="p-6 bg-red-50/90 border border-red-200 rounded-xs text-xs text-red-800 space-y-3">
-          <p className="text-sm font-bold">
-            No se pudo cargar el formulario del producto
-          </p>
-          <p>{loadError.message}</p>
-          <div className="flex items-center gap-3 pt-1">
-            <button
-              type="button"
-              onClick={loadFormResources}
-              className="px-4 py-2 font-semibold uppercase tracking-wider bg-red-800 text-white rounded-xs cursor-pointer"
-            >
-              Reintentar
-            </button>
-            <a
-              href="/admin/products"
-              className="font-semibold underline underline-offset-4"
-            >
-              Volver al listado
-            </a>
-          </div>
-        </div>
+        <ErrorState
+          title="No se pudo cargar el formulario del producto"
+          message={loadError.message}
+          onRetry={loadFormResources}
+        />
       )}
 
-      {/* Main Loaded Form */}
       {!isLoadingInitial && !loadError && (
-        <form onSubmit={handleSubmit} className="space-y-8" noValidate>
-          {/* Header Bar */}
-          <div className="bg-[#FAF9F6]/90 backdrop-blur-xs border border-brand-dark/12 p-5 sm:p-6 rounded-xs flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-brand-dark">
-                  {isEdit ? title || `Producto #${resolvedId}` : 'Crear Nuevo Producto'}
+        <form onSubmit={(e) => handleSubmit(e)} noValidate>
+          {/* Barra superior pegajosa: un solo "Guardar" */}
+          <div className="sticky top-14 z-20 -mx-4 -mt-5 border-b border-brand-dark/[0.08] bg-brand-light px-4 py-3 sm:-mx-6 sm:px-6 lg:top-0 lg:-mx-8 lg:-mt-8 lg:px-8">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <nav aria-label="Ruta" className="flex items-center gap-1.5 text-[13px] text-ink-muted">
+                  <a href="/admin/products" className="inline-flex min-h-6 items-center hover:text-brand-dark">
+                    Productos
+                  </a>
+                  <span aria-hidden="true">/</span>
+                  <span className="truncate text-brand-dark">{isEdit ? 'Editar' : 'Nuevo'}</span>
+                </nav>
+                <h1 className="truncate text-lg font-semibold tracking-[-0.02em] text-brand-dark lg:text-xl">
+                  {pageTitle}
                 </h1>
-                {isEdit && (
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider border rounded-xs ${isActiveProduct
-                      ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                      : 'bg-brand-dark/[0.06] text-brand-dark/65 border-brand-dark/15'
-                      }`}
-                  >
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${isActiveProduct ? 'bg-emerald-600' : 'bg-brand-dark/40'
-                        }`}
-                    />
-                    <span>{isActiveProduct ? 'Activo' : 'Inactivo'}</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {isDirty && (
+                  <span className="hidden text-[13px] text-ink-muted md:inline" role="status">
+                    Cambios sin guardar
                   </span>
                 )}
+                {isEdit && isActiveProduct && (
+                  <span className="hidden sm:block">
+                    <Button
+                      href={`/products/${resolvedId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      variant="secondary"
+                      size="sm"
+                    >
+                      Ver en tienda <Icon name="external" size={14} />
+                    </Button>
+                  </span>
+                )}
+                {isEdit && <Menu label="Más acciones" items={menuItems} />}
+                <div className="hidden items-center gap-2 lg:flex">{saveButtons('lg:min-h-10')}</div>
               </div>
-              <p className="text-xs text-brand-dark/60">
-                {isEdit
-                  ? `ID interno #${resolvedId} • Stock total activo calculado: ${totalActiveStock} u.`
-                  : 'Completá la información general, configurá los talles y adjuntá las fotografías del producto.'}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2.5">
-              {isEdit && isActiveProduct && (
-                <a
-                  href={`/products/${resolvedId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark bg-white border border-brand-dark/20 hover:border-brand-dark rounded-xs transition-colors"
-                >
-                  Ver en tienda ↗
-                </a>
-              )}
-              {isEdit && (
-                <button
-                  type="button"
-                  disabled={isTogglingStatus || isSaving}
-                  onClick={() => {
-                    if (isActiveProduct) {
-                      setShowDeactivateModal(true);
-                    } else {
-                      handleToggleProductActive(true);
-                    }
-                  }}
-                  className={`px-3.5 py-2 text-xs font-semibold uppercase tracking-wider border rounded-xs transition-colors cursor-pointer ${isActiveProduct
-                    ? 'border-red-200 text-red-800 bg-white hover:bg-red-50'
-                    : 'border-emerald-300 text-emerald-900 bg-emerald-50 hover:bg-emerald-100'
-                    }`}
-                >
-                  {isTogglingStatus
-                    ? 'Actualizando...'
-                    : isActiveProduct
-                      ? 'Desactivar producto'
-                      : 'Reactivar producto'}
-                </button>
-              )}
-              <button
-                type="submit"
-                disabled={isSaving || (categoriesLoaded && categories.length === 0)}
-                className={`px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] rounded-xs transition-opacity ${isSaving || (categoriesLoaded && categories.length === 0)
-                  ? 'bg-brand-dark/40 cursor-not-allowed'
-                  : 'bg-brand-dark hover:opacity-90 cursor-pointer'
-                  }`}
-              >
-                {isSaving
-                  ? 'Guardando...'
-                  : isEdit
-                    ? 'Guardar cambios'
-                    : 'Crear producto'}
-              </button>
             </div>
           </div>
 
-          {/* Empty Categories Warning Banner */}
-          {categoriesLoaded && categories.length === 0 && (
-            <div
-              className="p-4 bg-amber-50 border border-amber-300 rounded-xs text-xs sm:text-sm text-amber-950 space-y-2"
-              role="alert"
-            >
-              <p className="font-bold">
-                Todavía no hay categorías disponibles en el sistema
-              </p>
-              <p>
-                El contrato del backend exige asociar cada producto a un{' '}
-                <code className="font-mono">categoryId</code> válido. Creá al
-                menos una categoría antes de poder guardar productos.
-              </p>
-              <div className="pt-1">
-                <a
-                  href="/admin/categories"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider bg-amber-900 text-white rounded-xs hover:opacity-90 transition-opacity"
-                >
-                  <span>Ir a Categories Management</span>
-                  <span aria-hidden="true">→</span>
-                </a>
-              </div>
-            </div>
-          )}
-
-          {/* Legacy Null Category Notice on Existing Dev Products */}
-          {isEdit && hadNullCategoryOnLoad && !categoryId && categories.length > 0 && (
-            <div
-              className="p-4 bg-amber-50/90 border border-amber-200 rounded-xs text-xs text-amber-900 space-y-1"
-              role="status"
-            >
-              <p className="font-semibold">
-                Atención: este producto tiene actualmente{' '}
-                <code className="font-mono">categoryId: null</code>
-              </p>
-              <p>
-                Seleccioná una de las categorías disponibles en el desplegable
-                antes de guardar los cambios.
-              </p>
-            </div>
-          )}
-
-          {/* Feedback Banners */}
-          {formSuccess && (
-            <div
-              className="p-4 bg-emerald-50/95 border border-emerald-200 rounded-xs text-xs sm:text-sm text-emerald-900 flex items-center justify-between gap-3"
-              role="status"
-            >
-              <span className="font-semibold">{formSuccess}</span>
-              <button
-                type="button"
-                onClick={() => setFormSuccess(null)}
-                className="text-emerald-900 font-bold hover:opacity-70 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {formError && (
-            <div
-              className="p-4 bg-red-50/95 border border-red-200 rounded-xs text-xs sm:text-sm text-red-800 space-y-1"
-              role="alert"
-            >
-              <p className="font-semibold">No se pudo completar la operación</p>
-              <p>{formError}</p>
-            </div>
-          )}
-
-          {/* Main 2-Column Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Left Column (7 cols): General Info + Sizes & Inventory */}
-            <div className="lg:col-span-7 space-y-8">
-              {/* Card 1: General Information */}
-              <section
-                className="bg-[#FAF9F6]/90 border border-brand-dark/10 p-5 sm:p-7 rounded-xs space-y-5"
-                aria-labelledby="section-general-info"
-              >
-                <div className="border-b border-brand-dark/[0.08] pb-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-dark/45">
-                    Datos Principales
-                  </span>
-                  <h2
-                    id="section-general-info"
-                    className="text-base sm:text-lg font-bold tracking-tight text-brand-dark"
-                  >
-                    Información General
-                  </h2>
-                </div>
-
-                <div className="space-y-4">
-                  {/* Product Title */}
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="product-title"
-                      className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
-                    >
-                      Nombre del producto <span className="text-red-600">*</span>
-                    </label>
+          <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-start">
+            {/* Columna izquierda */}
+            <div className="space-y-5 lg:col-span-8">
+              {/* 1. Datos básicos */}
+              <Card title="Datos básicos">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
+                  <Field label="Nombre" required error={fieldErrors.title} className="sm:col-span-6" id="product-title">
                     <input
-                      id="product-title"
                       type="text"
                       maxLength={200}
                       required
@@ -1350,1121 +791,268 @@ export default function AdminProductFormView({
                       value={title}
                       onChange={(e) => {
                         setTitle(e.target.value);
-                        if (fieldErrors.title) {
-                          setFieldErrors((prev) => ({ ...prev, title: undefined }));
-                        }
+                        clearFieldError('title');
                       }}
                       placeholder="Ej. Remera Oversize Heavyweight"
-                      aria-invalid={fieldErrors.title ? 'true' : undefined}
-                      className={`form-input w-full h-11 px-3.5 text-base sm:text-sm ${fieldErrors.title ? 'form-input-error' : ''
-                        }`}
+                      className={inputClass}
                     />
-                    {fieldErrors.title && (
-                      <p className="text-xs text-red-600">{fieldErrors.title}</p>
-                    )}
-                  </div>
+                  </Field>
 
-                  {/* Price */}
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="product-price"
-                      className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
-                    >
-                      Precio (USD) <span className="text-red-600">*</span>
-                    </label>
-                    <input
-                      id="product-price"
-                      type="number"
-                      min="1"
-                      step="0.01"
+                  <Field label="Precio" required error={fieldErrors.price} className="sm:col-span-2" id="product-price">
+                    {(controlProps) => (
+                      <div className="relative">
+                        <input
+                          {...controlProps}
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="0.01"
+                          disabled={isSaving}
+                          value={price}
+                          onChange={(e) => {
+                            setPrice(e.target.value);
+                            clearFieldError('price');
+                          }}
+                          placeholder="0"
+                          className={`${inputClass} pr-14 tabular-nums`}
+                        />
+                        <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] font-medium text-ink-muted">
+                          USD
+                        </span>
+                      </div>
+                    )}
+                  </Field>
+
+                  <Field
+                    label="Categoría"
+                    required
+                    className="sm:col-span-2"
+                    id="product-category"
+                    error={fieldErrors.categoryId}
+                    hint={
+                      noCategories ? (
+                        <>
+                          Todavía no hay categorías.{' '}
+                          <a href="/admin/categories" className="font-semibold text-brand-dark underline underline-offset-2">
+                            Crear una
+                          </a>
+                        </>
+                      ) : isEdit && hadNullCategoryOnLoad && !categoryId ? (
+                        'Este producto no tiene categoría. Elegí una antes de guardar.'
+                      ) : undefined
+                    }
+                  >
+                    <select
                       required
-                      disabled={isSaving}
-                      value={price}
+                      disabled={categories.length === 0 || isSaving}
+                      value={categoryId}
                       onChange={(e) => {
-                        setPrice(e.target.value);
-                        if (fieldErrors.price) {
-                          setFieldErrors((prev) => ({ ...prev, price: undefined }));
+                        setCategoryId(e.target.value);
+                        clearFieldError('categoryId');
+                        // Alta: si el admin no tocó los talles, se recargan los talles por defecto de la nueva categoría
+                        if (!isEdit && !vm.userEdited) {
+                          const nextCat = categories.find((c) => String(c.id) === e.target.value);
+                          vm.loadDefaults(isSneakersCategory(nextCat));
                         }
                       }}
-                      placeholder="Ej. 150"
-                      aria-invalid={fieldErrors.price ? 'true' : undefined}
-                      className={`form-input w-full h-11 px-3.5 text-base sm:text-sm tabular-nums ${fieldErrors.price ? 'form-input-error' : ''
-                        }`}
-                    />
-                    {price && Number(price) > 0 && (
-                      <p className="text-[11px] text-brand-dark/50 tabular-nums">
-                        Vista previa: {formatPrice(Number(price))}
-                      </p>
-                    )}
-                    {fieldErrors.price && (
-                      <p className="text-xs text-red-600">
-                        {fieldErrors.price}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Taxonomy Row: Category, Brand & Gender */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {/* Category Selector */}
-                    <div className="space-y-1.5">
-                      <label
-                        htmlFor="product-category"
-                        className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
-                      >
-                        Categoría <span className="text-red-600">*</span>
-                      </label>
-                      <select
-                        id="product-category"
-                        required
-                        disabled={categories.length === 0 || isSaving}
-                        value={categoryId}
-                        onChange={(e) => {
-                          setCategoryId(e.target.value);
-                          if (fieldErrors.categoryId) {
-                            setFieldErrors((prev) => ({
-                              ...prev,
-                              categoryId: undefined,
-                            }));
-                          }
-                        }}
-                        aria-invalid={fieldErrors.categoryId ? 'true' : undefined}
-                        className={`form-select w-full h-11 pl-3.5 pr-9 text-base sm:text-sm ${fieldErrors.categoryId ? 'form-input-error' : ''
-                          }`}
-                      >
-                        <option value="">
-                          {categories.length === 0
-                            ? 'Sin categorías disponibles'
-                            : 'Seleccioná una categoría...'}
-                        </option>
-                        {categories.map((cat) => (
-                          <option key={cat.id} value={String(cat.id)}>
-                            {cat.name}
-                          </option>
-                        ))}
-                      </select>
-                      {fieldErrors.categoryId && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.categoryId}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Brand Selector */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <label
-                          htmlFor="product-brand"
-                          className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
-                        >
-                          Marca
-                        </label>
-                        <a
-                          href="/admin/brands"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[10px] font-semibold uppercase tracking-wider text-brand-dark/50 hover:text-brand-dark underline underline-offset-2"
-                        >
-                          Marcas ↗
-                        </a>
-                      </div>
-                      <select
-                        id="product-brand"
-                        disabled={isSaving}
-                        value={brandId}
-                        onChange={(e) => {
-                          setBrandId(e.target.value);
-                          if (fieldErrors.brandId) {
-                            setFieldErrors((prev) => ({
-                              ...prev,
-                              brandId: undefined,
-                            }));
-                          }
-                        }}
-                        aria-invalid={fieldErrors.brandId ? 'true' : undefined}
-                        className={`form-select w-full h-11 pl-3.5 pr-9 text-base sm:text-sm ${fieldErrors.brandId ? 'form-input-error' : ''
-                          }`}
-                      >
-                        <option value="">Sin marca</option>
-                        {/* Preserve inactive brand option if currently assigned to this product */}
-                        {isCurrentBrandInactive && currentProductBrandInList && (
-                          <option value={String(currentProductBrandInList.id)}>
-                            {currentProductBrandInList.name} (Inactiva)
-                          </option>
-                        )}
-                        {activeBrands.map((b) => (
-                          <option key={b.id} value={String(b.id)}>
-                            {b.name}
-                          </option>
-                        ))}
-                      </select>
-                      {isCurrentBrandInactive && currentProductBrandInList && (
-                        <p className="text-[11px] text-amber-800 leading-tight">
-                          Esta marca está inactiva. Para guardar cambios debés reactivarla en Marcas o seleccionar &ldquo;Sin marca&rdquo;.
-                        </p>
-                      )}
-                      {brandsLoaded && brands.length === 0 && (
-                        <p className="text-[11px] text-brand-dark/50">
-                          No hay marcas registradas.{' '}
-                          <a href="/admin/brands" className="underline font-semibold text-brand-dark">
-                            Crear marca
-                          </a>
-                        </p>
-                      )}
-                      {fieldErrors.brandId && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.brandId}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Gender Selector */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <label
-                          htmlFor="product-gender"
-                          className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
-                        >
-                          Género <span className="text-red-600">*</span>
-                        </label>
-                      </div>
-                      <select
-                        id="product-gender"
-                        disabled={isSaving}
-                        value={gender}
-                        onChange={(e) => setGender(e.target.value)}
-                        className="form-select w-full h-11 pl-3.5 pr-9 text-base sm:text-sm"
-                      >
-                        <option value="UNISEX">Unisex (UNISEX)</option>
-                        <option value="MEN">Hombre (MEN)</option>
-                        <option value="WOMEN">Mujer (WOMEN)</option>
-                      </select>
-                      <p className="text-[11px] text-brand-dark/50">
-                        Clasificación para filtros del catálogo.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Description */}
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="product-description"
-                      className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
+                      className={selectClass}
                     >
-                      Descripción
-                    </label>
+                      <option value="">
+                        {categories.length === 0 ? 'Sin categorías' : 'Elegí una…'}
+                      </option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={String(cat.id)}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field
+                    label="Marca"
+                    className="sm:col-span-2"
+                    id="product-brand"
+                    error={fieldErrors.brandId}
+                    hint={
+                      isCurrentBrandInactive && currentProductBrandInList
+                        ? 'Esta marca está inactiva. Para guardar, reactivala en Marcas o elegí "Sin marca".'
+                        : brandsLoaded && brands.length === 0
+                          ? (
+                            <>
+                              No hay marcas.{' '}
+                              <a href="/admin/brands" className="font-semibold text-brand-dark underline underline-offset-2">
+                                Crear marca
+                              </a>
+                            </>
+                          )
+                          : undefined
+                    }
+                  >
+                    <select
+                      disabled={isSaving}
+                      value={brandId}
+                      onChange={(e) => {
+                        setBrandId(e.target.value);
+                        clearFieldError('brandId');
+                      }}
+                      className={selectClass}
+                    >
+                      <option value="">Sin marca</option>
+                      {/* Preserve inactive brand option if currently assigned to this product */}
+                      {isCurrentBrandInactive && currentProductBrandInList && (
+                        <option value={String(currentProductBrandInList.id)}>
+                          {currentProductBrandInList.name} (Inactiva)
+                        </option>
+                      )}
+                      {activeBrands.map((b) => (
+                        <option key={b.id} value={String(b.id)}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <div className="sm:col-span-6">
+                    <span id="gender-label" className="mb-1.5 block text-[13px] font-medium text-brand-dark">
+                      Género
+                    </span>
+                    <Segmented
+                      ariaLabel="Género"
+                      options={GENDER_OPTIONS}
+                      value={gender}
+                      onChange={setGender}
+                      fullWidth
+                      disabled={isSaving}
+                    />
+                  </div>
+                </div>
+
+                <details
+                  className="group mt-4 border-t border-brand-dark/[0.07] pt-2"
+                  open={descOpen}
+                  onToggle={(e) => setDescOpen(e.currentTarget.open)}
+                >
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between text-sm font-medium text-brand-dark">
+                    <span>
+                      Descripción <span className="font-normal text-ink-muted">(opcional)</span>
+                    </span>
+                    <Icon name="chevronDown" size={16} className="transition-transform group-open:rotate-180" />
+                  </summary>
+                  <Field error={fieldErrors.description} id="product-description" className="mt-1">
                     <textarea
-                      id="product-description"
                       rows={4}
                       disabled={isSaving}
                       value={description}
                       onChange={(e) => {
                         setDescription(e.target.value);
-                        if (fieldErrors.description) {
-                          setFieldErrors((prev) => ({
-                            ...prev,
-                            description: undefined,
-                          }));
-                        }
+                        clearFieldError('description');
                       }}
-                      placeholder="Detalle de materiales, calce, gramaje y confección..."
-                      aria-invalid={fieldErrors.description ? 'true' : undefined}
-                      className={`form-textarea w-full p-3.5 text-base sm:text-sm resize-y leading-relaxed ${fieldErrors.description ? 'form-input-error' : ''
-                        }`}
+                      aria-label="Descripción"
+                      placeholder="Materiales, calce, detalles que ayuden a decidir la compra"
+                      className={textareaClass}
                     />
-                    {fieldErrors.description && (
-                      <p className="text-xs text-red-600">
-                        {fieldErrors.description}
-                      </p>
-                    )}
-                  </div>
+                  </Field>
+                </details>
+              </Card>
 
-                  {/* "Recién ingresados" (home new-in section) */}
-                  <div className="rounded-xs border border-brand-dark/10 bg-brand-dark/[0.02] p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <label className="flex items-start gap-3 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 h-4 w-4 accent-brand-dark"
-                          checked={newInEnabled}
-                          disabled={isSaving || (!newInEnabled && isNewInFull)}
-                          onChange={(e) => handleToggleNewIn(e.target.checked)}
-                        />
-                        <span>
-                          <span className="block text-sm font-semibold text-brand-dark">
-                            Mostrar en &ldquo;Recién ingresados&rdquo;
-                          </span>
-                          <span className="block text-[11px] text-brand-dark/55 leading-snug">
-                            Sección destacada del inicio. La posición 1 aparece primero.
-                          </span>
-                        </span>
-                      </label>
-                      <span className="shrink-0 text-[11px] font-mono text-brand-dark/50">
-                        {newInOccupiedCount}/{MAX_NEW_IN_PRODUCTS} en uso
-                      </span>
-                    </div>
+              {/* 2. Fotos */}
+              <ProductPhotosCard
+                existingImages={existingImages}
+                queuedFiles={queuedFiles}
+                disabled={isSaving}
+                busy={isGalleryBusy}
+                error={fileUploadError}
+                onFilesSelected={handleFileSelect}
+                onRemoveQueued={handleRemoveQueuedFile}
+                onSetPrimary={handleSetPrimaryImage}
+                onDeleteExisting={handleDeleteExistingImage}
+                onReorderExisting={handleReorderExisting}
+                onReorderQueued={handleReorderQueued}
+              />
 
-                    {!newInEnabled && isNewInFull && (
-                      <p className="text-[11px] text-amber-800 leading-snug">
-                        La sección ya tiene {MAX_NEW_IN_PRODUCTS} productos. Para sumar este, primero quitá otro producto de Recién ingresados.
-                      </p>
-                    )}
-
-                    {newInEnabled && (
-                      <div className="space-y-1.5">
-                        <label
-                          htmlFor="product-new-in-position"
-                          className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75"
-                        >
-                          Posición <span className="text-red-600">*</span>
-                        </label>
-                        <select
-                          id="product-new-in-position"
-                          disabled={isSaving}
-                          value={newInPosition}
-                          onChange={(e) => {
-                            setNewInPosition(e.target.value);
-                            if (fieldErrors.newInPosition) {
-                              setFieldErrors((prev) => ({ ...prev, newInPosition: undefined }));
-                            }
-                          }}
-                          aria-invalid={fieldErrors.newInPosition ? 'true' : undefined}
-                          className={`form-select w-full sm:max-w-sm h-11 pl-3.5 pr-9 text-base sm:text-sm ${fieldErrors.newInPosition ? 'form-input-error' : ''}`}
-                        >
-                          <option value="" disabled>
-                            Elegí una posición
-                          </option>
-                          {newInPositions.map((pos) => {
-                            const takenBy = newInTakenByOthers.get(pos);
-                            return (
-                              <option key={pos} value={String(pos)} disabled={Boolean(takenBy)}>
-                                {takenBy
-                                  ? `${pos} — En uso: ${takenBy.title}${takenBy.isActive === false ? ' (inactivo)' : ''}`
-                                  : `${pos} — Libre`}
-                              </option>
-                            );
-                          })}
-                        </select>
-                        {fieldErrors.newInPosition && (
-                          <p className="text-xs text-red-600">{fieldErrors.newInPosition}</p>
-                        )}
-                      </div>
-                    )}
-
-                    {newInSlotsError && (
-                      <p className="text-[11px] text-amber-800 leading-snug">
-                        {newInSlotsError} Igual podés guardar: si la posición está ocupada, el sistema te avisa.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </section>
-
-              {/* Card 2: Sizes & Inventory */}
-              <section
-                className="bg-[#FAF9F6]/90 border border-brand-dark/10 p-5 sm:p-7 rounded-xs space-y-6"
-                aria-labelledby="section-sizes-inventory"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-brand-dark/[0.08] pb-4">
-                  <div>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-dark/45">
-                      Variantes y Disponibilidad
-                    </span>
-                    <h2
-                      id="section-sizes-inventory"
-                      className="text-base sm:text-lg font-bold tracking-tight text-brand-dark"
-                    >
-                      Sizes &amp; Inventory
-                    </h2>
-                  </div>
-
-                  <div className="bg-brand-dark text-[#FAFAFA] px-3.5 py-2 rounded-xs text-right">
-                    <span className="block text-[9px] font-mono uppercase tracking-widest text-[#FAFAFA]/70">
-                      Stock Total Activo
-                    </span>
-                    <span className="text-base sm:text-lg font-mono font-bold tabular-nums">
-                      {totalActiveStock} {totalActiveStock === 1 ? 'unidad' : 'unidades'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Sizing Type Selector: Apparel Sizes vs Single Variant (No Physical Size) */}
-                <div className="space-y-2">
-                  <span className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/70">
-                    Esquema de talles del producto
-                  </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => handleSwitchSizingMode('multi')}
-                      className={`p-3 text-left border rounded-xs transition-colors cursor-pointer ${sizingMode === 'multi'
-                        ? 'bg-brand-dark text-[#FAFAFA] border-brand-dark'
-                        : 'bg-white text-brand-dark border-brand-dark/15 hover:border-brand-dark'
-                        }`}
-                    >
-                      <span className="block text-xs font-bold uppercase tracking-wider">
-                        Múltiples talles (S / M / L / Calzado)
-                      </span>
-                      <span
-                        className={`block text-[11px] mt-0.5 ${sizingMode === 'multi'
-                          ? 'text-[#FAFAFA]/75'
-                          : 'text-brand-dark/55'
-                          }`}
-                      >
-                        El comprador elige su talle en la página del producto.
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleSwitchSizingMode('single')}
-                      className={`p-3 text-left border rounded-xs transition-colors cursor-pointer ${sizingMode === 'single'
-                        ? 'bg-brand-dark text-[#FAFAFA] border-brand-dark'
-                        : 'bg-white text-brand-dark border-brand-dark/15 hover:border-brand-dark'
-                        }`}
-                    >
-                      <span className="block text-xs font-bold uppercase tracking-wider">
-                        Sin talle físico (Único / One Size)
-                      </span>
-                      <span
-                        className={`block text-[11px] mt-0.5 ${sizingMode === 'single'
-                          ? 'text-[#FAFAFA]/75'
-                          : 'text-brand-dark/55'
-                          }`}
-                      >
-                        Usa una variante única sin pedir selección de talle en tienda.
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                {variantFeedbackError && (
-                  <div
-                    className="p-3 bg-red-50 border border-red-200 rounded-xs text-xs text-red-800"
-                    role="alert"
-                  >
-                    {variantFeedbackError}
-                  </div>
-                )}
-
-                {/* Mode A: Single-size ('Único' / 'One Size') */}
-                {sizingMode === 'single' ? (
-                  <div className="p-4 sm:p-5 bg-white border border-brand-dark/15 rounded-xs space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-brand-dark">
-                          Configuración de Variante Única
-                        </h3>
-                        <p className="text-[11px] text-brand-dark/60 mt-0.5">
-                          El carrito utilizará internamente el{' '}
-                          <code className="font-mono">variantId</code> de esta
-                          variante sin obligar al cliente a elegir talle.
-                        </p>
-                      </div>
-                      {activeSingleVariant?.id != null && (
-                        <span className="font-mono text-[11px] px-2 py-0.5 bg-brand-dark/[0.06] text-brand-dark rounded-xs">
-                          ID Variante #{activeSingleVariant.id}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                      <div className="space-y-1.5">
-                        <label className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/70">
-                          Denominación de variante
-                        </label>
-                        {activeSingleVariant?.id != null ? (
-                          <div className="h-10 px-3 flex items-center justify-between bg-brand-dark/[0.04] border border-brand-dark/15 rounded-xs text-xs font-semibold text-brand-dark">
-                            <span>{activeSingleVariant.size}</span>
-                            <span className="text-[10px] font-mono text-brand-dark/45">
-                              Persistida
-                            </span>
-                          </div>
-                        ) : (
-                          <select
-                            disabled={isSaving}
-                            value={activeSingleVariant?.size || singleSizeLabel}
-                            onChange={(e) =>
-                              handleSingleSizeLabelChange(e.target.value)
-                            }
-                            className="form-select w-full h-10 pl-3 pr-9 text-base sm:text-xs font-semibold"
-                          >
-                            <option value="Único">Único</option>
-                            <option value="One Size">One Size</option>
-                          </select>
-                        )}
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label
-                          htmlFor="single-variant-stock"
-                          className="block text-[11px] font-semibold uppercase tracking-wider text-brand-dark/70"
-                        >
-                          Stock disponible (unidades)
-                        </label>
-                        <input
-                          id="single-variant-stock"
-                          type="number"
-                          min="0"
-                          step="1"
-                          disabled={isSaving}
-                          value={activeSingleVariant?.stock ?? 0}
-                          onChange={(e) =>
-                            handleSingleSizeStockChange(e.target.value)
-                          }
-                          className="form-input w-full h-10 px-3 text-base sm:text-sm font-semibold tabular-nums"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  /* Mode B: Multi-size management */
-                  <div className="space-y-5">
-                    {/* Add New Size Toolbar */}
-                    <div className="p-4 bg-white border border-brand-dark/12 rounded-xs space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-dark/75">
-                          {isSneakers ? 'Agregar talle US' : 'Agregar talle'}
-                        </span>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[10px] text-brand-dark/45 uppercase mr-1">
-                            Rápido:
-                          </span>
-                          {(isSneakers ? QUICK_SNEAKER_SIZES : QUICK_SIZES).map((sz) => (
-                            <button
-                              key={sz}
-                              type="button"
-                              onClick={() => handleAddVariant(sz, newVariantStock)}
-                              className="px-2 py-1 text-[11px] font-semibold uppercase border border-brand-dark/15 bg-[#FAF9F6] hover:border-brand-dark rounded-xs cursor-pointer"
-                            >
-                              + {sz}{isSneakers ? 'us' : ''}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
-                        <div className="sm:col-span-6 space-y-1">
-                          <label
-                            htmlFor="new-variant-size"
-                            className="block text-[10px] font-semibold uppercase tracking-wider text-brand-dark/55"
-                          >
-                            {isSneakers
-                              ? 'Talle US (ej. 7, 7.5, 8.5)'
-                              : 'Talle (ej. S, M, L, XL, 41, Único)'}
-                          </label>
-                          <input
-                            id="new-variant-size"
-                            type="text"
-                            maxLength={50}
-                            disabled={isSaving}
-                            value={newVariantSize}
-                            onChange={(e) => setNewVariantSize(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleAddVariant(newVariantSize, newVariantStock);
-                              }
-                            }}
-                            placeholder={
-                              isSneakers
-                                ? 'Ingresá talle US (ej. 7, 7.5, 8.5)...'
-                                : 'Ingresá un talle...'
-                            }
-                            className="form-input w-full h-9 px-3 text-base sm:text-xs"
-                          />
-                        </div>
-
-                        <div className="sm:col-span-3 space-y-1">
-                          <label
-                            htmlFor="new-variant-stock"
-                            className="block text-[10px] font-semibold uppercase tracking-wider text-brand-dark/55"
-                          >
-                            Stock inicial
-                          </label>
-                          <input
-                            id="new-variant-stock"
-                            type="number"
-                            min="0"
-                            step="1"
-                            disabled={isSaving}
-                            value={newVariantStock}
-                            onChange={(e) => setNewVariantStock(e.target.value)}
-                            className="form-input w-full h-9 px-3 text-base sm:text-xs tabular-nums"
-                          />
-                        </div>
-
-                        <div className="sm:col-span-3">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleAddVariant(newVariantSize, newVariantStock)
-                            }
-                            className="w-full h-9 px-3 text-xs font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs hover:opacity-90 cursor-pointer"
-                          >
-                            + Agregar
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Active Variants List */}
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-brand-dark">
-                          Variantes Activas ({activeVariants.length})
-                        </h3>
-                        <span className="text-[11px] text-brand-dark/50">
-                          Visibles en la tienda pública
-                        </span>
-                      </div>
-
-                      {activeVariants.length === 0 ? (
-                        <div className="p-6 text-center bg-amber-50/60 border border-amber-200 rounded-xs text-xs text-amber-900">
-                          Este producto no tiene variantes activas. Agregá o
-                          reactivá al menos un talle para habilitar el stock en
-                          la tienda.
-                        </div>
-                      ) : (
-                        <div className="bg-white border border-brand-dark/12 rounded-xs divide-y divide-brand-dark/[0.06]">
-                          {activeVariants.map((v) => (
-                            <div
-                              key={v.localKey}
-                              className="p-3 sm:p-3.5 flex flex-wrap items-center justify-between gap-3"
-                            >
-                              <div className="flex items-center gap-3 min-w-[140px]">
-                                {v.id != null ? (
-                                  <span className="inline-flex items-center justify-center min-w-[44px] h-9 px-2.5 bg-brand-dark text-[#FAFAFA] text-xs font-bold uppercase rounded-xs">
-                                    {v.size}
-                                  </span>
-                                ) : (
-                                  <input
-                                    type="text"
-                                    maxLength={50}
-                                    disabled={isSaving}
-                                    value={v.size}
-                                    onChange={(e) =>
-                                      handleVariantSizeChange(
-                                        v.localKey,
-                                        e.target.value
-                                      )
-                                    }
-                                    aria-label="Nombre del talle nuevo"
-                                    className="form-input w-24 h-9 px-2.5 text-base sm:text-xs font-bold uppercase bg-[#FAF9F6]"
-                                  />
-                                )}
-                                <div>
-                                  <span className="block text-xs font-semibold text-brand-dark">
-                                    {isSneakers ? `Talle US ${v.size}` : `Talle ${v.size}`}
-                                  </span>
-                                  <span className="block font-mono text-[10px] text-brand-dark/45">
-                                    {v.id != null
-                                      ? `ID #${v.id} (Activa)`
-                                      : 'Nueva variante (sin guardar)'}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-2">
-                                  <label
-                                    htmlFor={`stock-${v.localKey}`}
-                                    className="text-[11px] font-medium text-brand-dark/60"
-                                  >
-                                    Stock:
-                                  </label>
-                                  <input
-                                    id={`stock-${v.localKey}`}
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    disabled={isSaving}
-                                    value={v.stock}
-                                    onChange={(e) =>
-                                      handleVariantStockChange(
-                                        v.localKey,
-                                        e.target.value
-                                      )
-                                    }
-                                    className="form-input w-20 h-9 px-2.5 text-base sm:text-xs font-semibold tabular-nums text-right"
-                                  />
-                                </div>
-
-                                {v.id != null ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleDeactivateVariant(v.localKey)
-                                    }
-                                    className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-800 border border-red-200 hover:bg-red-50 rounded-xs cursor-pointer"
-                                  >
-                                    Desactivar
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleRemoveUnsavedVariant(v.localKey)
-                                    }
-                                    className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand-dark/65 border border-brand-dark/15 hover:text-red-700 hover:border-red-200 rounded-xs cursor-pointer"
-                                  >
-                                    Quitar
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Inactive Variants List (Shown in both modes so existing inactive variants are always clear and can be reactivated) */}
-                {inactiveVariants.length > 0 && (
-                  <div className="space-y-2.5 pt-2 border-t border-brand-dark/[0.08]">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-brand-dark/65">
-                        Variantes Inactivas ({inactiveVariants.length})
-                      </h3>
-                      <span className="text-[11px] text-brand-dark/45">
-                        Ocultas en tienda • No suman al stock activo
-                      </span>
-                    </div>
-
-                    <div className="bg-brand-dark/[0.02] border border-brand-dark/10 rounded-xs divide-y divide-brand-dark/[0.06]">
-                      {inactiveVariants.map((v) => (
-                        <div
-                          key={v.localKey}
-                          className="p-3 flex flex-wrap items-center justify-between gap-3 opacity-80"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="inline-flex items-center justify-center min-w-[40px] h-8 px-2 bg-brand-dark/10 text-brand-dark/60 text-xs font-bold uppercase rounded-xs line-through">
-                              {v.size}
-                            </span>
-                            <div>
-                              <span className="block text-xs font-semibold text-brand-dark/70">
-                                {isSneakers ? `Talle US ${v.size} (Inactiva)` : `Talle ${v.size} (Inactiva)`}
-                              </span>
-                              <span className="block font-mono text-[10px] text-brand-dark/45">
-                                {v.id != null
-                                  ? `ID #${v.id} • Stock guardado: ${v.stock} u.`
-                                  : `Stock: ${v.stock} u.`}
-                              </span>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (sizingMode === 'single') {
-                                setSizingMode('multi');
-                              }
-                              handleReactivateVariant(v.localKey);
-                            }}
-                            className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-900 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 rounded-xs cursor-pointer"
-                          >
-                            Reactivar talle
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {isEdit && !variantsDirty && (
-                  <p className="text-[11px] text-brand-dark/50 italic">
-                    Los talles no fueron modificados en esta sesión: si guardás
-                    solo cambios de información general o imágenes, el sistema
-                    omitirá el arreglo <code className="font-mono">variants</code>{' '}
-                    para conservar intactas las variantes actuales en el
-                    backend.
-                  </p>
-                )}
-              </section>
+              {/* 3. Talles y stock */}
+              <ProductVariantsCard vm={vm} isSneakers={isSneakers} disabled={isSaving} />
             </div>
 
-            {/* Right Column (5 cols): Product Gallery & Upload */}
-            <div className="lg:col-span-5 space-y-8">
-              <section
-                className="bg-[#FAF9F6]/90 border border-brand-dark/10 p-5 sm:p-7 rounded-xs space-y-6"
-                aria-labelledby="section-gallery"
-              >
-                <div className="border-b border-brand-dark/[0.08] pb-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-dark/45">
-                    Fotografías de Producto
-                  </span>
-                  <h2
-                    id="section-gallery"
-                    className="text-base sm:text-lg font-bold tracking-tight text-brand-dark"
-                  >
-                    Galería de Imágenes
-                  </h2>
-                </div>
-
-                {/* 1. Existing Gallery (Edit Mode Only) */}
+            {/* Columna lateral */}
+            <div className="space-y-5 lg:sticky lg:top-24 lg:col-span-4">
+              <Card title="Visibilidad">
                 {isEdit && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-brand-dark">
-                        Imágenes actuales ({existingImages.length})
-                      </h3>
-                      {isGalleryBusy && (
-                        <span className="text-[11px] font-mono text-brand-dark/55 animate-pulse">
-                          Actualizando galería...
-                        </span>
-                      )}
-                    </div>
-
-                    {existingImages.length === 0 ? (
-                      <div className="p-6 text-center bg-brand-dark/[0.02] border border-brand-dark/10 rounded-xs text-xs text-brand-dark/55">
-                        Este producto aún no tiene fotografías cargadas en el
-                        servidor.
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                        {existingImages.map((img, idx) => {
-                          const isPrimary = Boolean(img.isPrimary);
-                          return (
-                            <div
-                              key={img.id || idx}
-                              className={`bg-white border rounded-xs overflow-hidden flex flex-col justify-between ${isPrimary
-                                ? 'border-brand-dark ring-1 ring-brand-dark'
-                                : 'border-brand-dark/12'
-                                }`}
-                            >
-                              <div className="aspect-[4/5] w-full relative overflow-hidden flex items-center justify-center p-2">
-                                <img
-                                  src={getOptimizedImageUrl(img.imageUrl, 'card')}
-                                  alt={`Imagen ${idx + 1}`}
-                                  className="w-full h-full object-contain object-center"
-                                />
-                                <div className="absolute top-2 left-2 right-2 flex items-center justify-between gap-1">
-                                  {isPrimary ? (
-                                    <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs shadow-xs">
-                                      Portada principal
-                                    </span>
-                                  ) : (
-                                    <span className="px-2 py-0.5 text-[10px] font-mono bg-white/90 text-brand-dark rounded-xs">
-                                      Orden #{idx + 1}
-                                    </span>
-                                  )}
-                                  <span className="px-1.5 py-0.5 text-[10px] font-mono bg-black/60 text-white rounded-xs">
-                                    ID {img.id}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="p-2.5 space-y-2 bg-[#FAF9F6]">
-                                {/* Reorder Controls */}
-                                <div className="flex items-center justify-between gap-1">
-                                  <button
-                                    type="button"
-                                    disabled={isGalleryBusy || idx === 0}
-                                    onClick={() => handleMoveImage(idx, -1)}
-                                    className="flex-1 py-1 text-[11px] font-semibold border border-brand-dark/15 bg-white hover:border-brand-dark disabled:opacity-35 rounded-xs cursor-pointer disabled:cursor-not-allowed"
-                                    title="Mover antes"
-                                  >
-                                    ← Subir
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={
-                                      isGalleryBusy ||
-                                      idx === existingImages.length - 1
-                                    }
-                                    onClick={() => handleMoveImage(idx, 1)}
-                                    className="flex-1 py-1 text-[11px] font-semibold border border-brand-dark/15 bg-white hover:border-brand-dark disabled:opacity-35 rounded-xs cursor-pointer disabled:cursor-not-allowed"
-                                    title="Mover después"
-                                  >
-                                    Bajar →
-                                  </button>
-                                </div>
-
-                                {/* Set Primary & Delete Controls */}
-                                <div className="flex items-center gap-1.5">
-                                  {!isPrimary && (
-                                    <button
-                                      type="button"
-                                      disabled={isGalleryBusy}
-                                      onClick={() =>
-                                        handleSetPrimaryImage(img.id)
-                                      }
-                                      className="flex-1 py-1.5 px-2 text-[10px] font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] hover:opacity-90 rounded-xs cursor-pointer"
-                                    >
-                                      Hacer portada
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    disabled={isGalleryBusy}
-                                    onClick={() => setImageToDelete(img)}
-                                    className="py-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-red-800 bg-white border border-red-200 hover:bg-red-50 rounded-xs cursor-pointer"
-                                  >
-                                    Eliminar
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
+                  <div>
+                    <Switch
+                      checked={isActiveProduct}
+                      onChange={handleVisibilityChange}
+                      disabled={isTogglingStatus || isSaving}
+                      label="Visible en la tienda"
+                      description={
+                        isActiveProduct
+                          ? 'Los clientes pueden verlo y comprarlo.'
+                          : 'Oculto: no aparece en la tienda.'
+                      }
+                    />
+                    {confirmingHide && (
+                      <div className="mt-2 rounded-ctl bg-red-50 p-3 text-sm text-red-900" role="alertdialog" aria-label="Confirmar ocultar producto">
+                        <p>Se oculta de la tienda. No se borra nada y lo podés reactivar.</p>
+                        <div className="mt-2.5 flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            loading={isTogglingStatus}
+                            onClick={() => handleToggleProductActive(false)}
+                          >
+                            Desactivar
+                          </Button>
+                          <Button size="sm" variant="ghost" disabled={isTogglingStatus} onClick={() => setConfirmingHide(false)}>
+                            Cancelar
+                          </Button>
+                        </div>
                       </div>
                     )}
+                    <hr className="my-3 border-brand-dark/[0.07]" />
                   </div>
                 )}
+                <NewInSlotPicker
+                  enabled={newInEnabled}
+                  onToggle={handleToggleNewIn}
+                  position={newInPosition}
+                  onPositionChange={(p) => {
+                    setNewInPosition(p);
+                    clearFieldError('newInPosition');
+                  }}
+                  takenByOthers={newInTakenByOthers}
+                  max={MAX_NEW_IN_PRODUCTS}
+                  occupiedCount={newInSlots.length}
+                  slotsError={newInSlotsError}
+                  error={fieldErrors.newInPosition}
+                  disabled={isSaving}
+                />
+              </Card>
 
-                {/* 2. Upload New Images Queue */}
-                <div className="space-y-3 pt-2 border-t border-brand-dark/[0.08]">
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="product-files-input"
-                      className="block text-xs font-bold uppercase tracking-wider text-brand-dark"
-                    >
-                      {isEdit
-                        ? 'Agregar nuevas fotografías'
-                        : 'Seleccionar fotografías para subir'}
-                    </label>
-                    <p className="text-[11px] text-brand-dark/55 leading-relaxed">
-                      {isEdit
-                        ? 'La carga es aditiva: las nuevas imágenes se sumarán a las existentes al guardar.'
-                        : 'La primera imagen seleccionada será asignada como portada principal.'}{' '}
-                      Límite máximo: 10 MB por archivo y 10 MB por envío.
-                    </p>
-                  </div>
+              <ProductStorePreview
+                title={title}
+                price={price}
+                brandName={previewBrand}
+                categoryName={selectedCategoryObj?.name}
+                image={previewImage}
+                sizes={vm.sizingMode === 'single' ? [] : vm.activeVariants.map((v) => v.size)}
+                isNew={newInEnabled}
+              />
+            </div>
+          </div>
 
-                  <label
-                    htmlFor="product-files-input"
-                    className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-brand-dark/20 hover:border-brand-dark focus-within:border-brand-dark focus-within:ring-1 focus-within:ring-brand-dark focus-within:bg-white bg-white/75 rounded-xs cursor-pointer transition-colors text-center space-y-1.5"
-                  >
-                    <span className="text-xs font-semibold uppercase tracking-wider text-brand-dark">
-                      + Seleccionar archivos de imagen
-                    </span>
-                    <span className="text-[11px] text-brand-dark/50">
-                      JPG, PNG, WEBP — Máx. 10 MB
-                    </span>
-                    <input
-                      id="product-files-input"
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      disabled={isSaving}
-                      onChange={handleFileSelect}
-                      className="sr-only"
-                    />
-                  </label>
-
-                  {fileUploadError && (
-                    <div
-                      className="p-3 bg-red-50 border border-red-200 rounded-xs text-xs text-red-800"
-                      role="alert"
-                    >
-                      {fileUploadError}
-                    </div>
-                  )}
-
-                  {/* Local Previews of Queued Files */}
-                  {queuedFiles.length > 0 && (
-                    <div className="space-y-2.5 pt-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-brand-dark">
-                          Imágenes listas para subir ({queuedFiles.length})
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            revokeAllPreviewUrls();
-                            setQueuedFiles([]);
-                          }}
-                          className="text-[11px] text-red-700 hover:underline cursor-pointer"
-                        >
-                          Limpiar selección
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        {queuedFiles.map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className="bg-white border border-brand-dark/15 rounded-xs overflow-hidden flex flex-col"
-                          >
-                            <div className="aspect-[4/5] w-full relative overflow-hidden flex items-center justify-center p-2">
-                              <img
-                                src={item.previewUrl}
-                                alt={item.file.name}
-                                className="w-full h-full object-contain object-center"
-                              />
-                              {!isEdit &&
-                                existingImages.length === 0 &&
-                                idx === 0 && (
-                                  <span className="absolute top-2 left-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-brand-dark text-[#FAFAFA] rounded-xs">
-                                    Portada inicial
-                                  </span>
-                                )}
-                            </div>
-                            <div className="p-2 flex items-center justify-between gap-2 text-[11px]">
-                              <div className="min-w-0">
-                                <p className="font-medium text-brand-dark truncate">
-                                  {item.file.name}
-                                </p>
-                                <p className="text-[10px] text-brand-dark/50 font-mono">
-                                  {formatFileSize(item.file.size)}
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveQueuedFile(item.id)}
-                                className="px-2 py-1 text-[10px] font-semibold uppercase text-red-700 hover:bg-red-50 rounded-xs shrink-0 cursor-pointer"
-                              >
-                                Quitar
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              {/* Submit Card Footer */}
-              <div className="bg-[#FAF9F6]/90 border border-brand-dark/12 p-5 rounded-xs space-y-3">
-                <button
-                  type="submit"
-                  disabled={
-                    isSaving || (categoriesLoaded && categories.length === 0)
-                  }
-                  className={`w-full min-h-[48px] px-5 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#FAFAFA] rounded-xs transition-opacity ${isSaving || (categoriesLoaded && categories.length === 0)
-                    ? 'bg-brand-dark/40 cursor-not-allowed'
-                    : 'bg-brand-dark hover:opacity-90 cursor-pointer'
-                    }`}
-                >
-                  {isSaving
-                    ? 'Guardando en el servidor...'
-                    : isEdit
-                      ? 'Guardar cambios del producto'
-                      : 'Crear producto en el catálogo'}
-                </button>
-                {isEdit && (
-                  <button
-                    type="button"
-                    disabled={isSaving || isDeletingProduct}
-                    onClick={handleDeleteProductClick}
-                    className="w-full py-2.5 px-4 text-xs font-semibold uppercase tracking-wider text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xs transition-colors cursor-pointer mt-2"
-                  >
-                    {isDeletingProduct ? 'Eliminando...' : 'Eliminar producto del catálogo'}
-                  </button>
-                )}
-                <a
-                  href="/admin/products"
-                  className="block w-full py-2 text-center text-xs font-semibold uppercase tracking-wider text-brand-dark/65 hover:text-brand-dark"
-                >
-                  ← Volver al listado de productos
-                </a>
-              </div>
+          {/* Barra de guardado fija (celu) */}
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-brand-dark/[0.08] bg-brand-light px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 lg:hidden">
+            <div className="mx-auto flex max-w-[1180px] items-center gap-2">
+              {isDirty && !isSaving && (
+                <span className="sr-only" role="status">
+                  Hay cambios sin guardar
+                </span>
+              )}
+              {saveButtons('flex-1 px-3')}
             </div>
           </div>
         </form>
       )}
-
-      {/* SweetAlert Floating Notification */}
-      <SweetAlertModal {...sweetAlert} />
-
-      {/* Modal 1: Delete Individual Image Confirmation */}
-      {imageToDelete && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-delete-image-title"
-        >
-          <div className="bg-[#FAF9F6] border border-brand-dark/20 max-w-md w-full p-6 rounded-xs shadow-lg space-y-5">
-            <div className="space-y-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-red-700">
-                Eliminar fotografía
-              </span>
-              <h3
-                id="modal-delete-image-title"
-                className="text-lg font-bold tracking-tight text-brand-dark"
-              >
-                ¿Eliminar esta imagen de la galería?
-              </h3>
-              <p className="text-xs sm:text-sm text-brand-dark/70 leading-relaxed">
-                Se eliminará la fotografía con ID{' '}
-                <strong className="font-mono">#{imageToDelete.id}</strong>.
-                {imageToDelete.isPrimary &&
-                  ' Como esta imagen es la portada actual, el servidor asignará automáticamente otra imagen restante como nueva portada.'}
-              </p>
-            </div>
-
-            <div className="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                disabled={isGalleryBusy}
-                onClick={() => setImageToDelete(null)}
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark border border-brand-dark/20 bg-white rounded-xs cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={isGalleryBusy}
-                onClick={handleConfirmDeleteImage}
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white bg-red-700 hover:bg-red-800 rounded-xs cursor-pointer"
-              >
-                {isGalleryBusy ? 'Eliminando...' : 'Sí, eliminar imagen'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 2: Deactivate Product Confirmation */}
-      {showDeactivateModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-deactivate-edit-title"
-        >
-          <div className="bg-[#FAF9F6] border border-brand-dark/20 max-w-md w-full p-6 rounded-xs shadow-lg space-y-5">
-            <div className="space-y-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-red-700">
-                Confirmar desactivación
-              </span>
-              <h3
-                id="modal-deactivate-edit-title"
-                className="text-lg font-bold tracking-tight text-brand-dark"
-              >
-                ¿Desactivar este producto?
-              </h3>
-              <p className="text-xs sm:text-sm text-brand-dark/70 leading-relaxed">
-                El producto dejará de estar visible en la tienda pública, pero
-                permanecerá disponible en el panel administrativo con todo su
-                historial de consultas y pedidos.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                disabled={isTogglingStatus}
-                onClick={() => setShowDeactivateModal(false)}
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-brand-dark border border-brand-dark/20 bg-white rounded-xs cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={isTogglingStatus}
-                onClick={() => handleToggleProductActive(false)}
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white bg-red-700 hover:bg-red-800 rounded-xs cursor-pointer"
-              >
-                {isTogglingStatus ? 'Desactivando...' : 'Sí, desactivar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </AdminShell>
   );
 }
-

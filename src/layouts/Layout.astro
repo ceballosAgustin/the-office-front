@@ -37,6 +37,7 @@ const canonicalUrl = !isFallbackTemplate ? `${canonicalOrigin}${cleanPath || "/"
 const socialImage = image && image.trim().length > 0
   ? (image.startsWith("http") ? image.trim() : `${canonicalOrigin}${image.startsWith("/") ? "" : "/"}${image.trim()}`)
   : null;
+
 ---
 
 <!doctype html>
@@ -88,102 +89,58 @@ const socialImage = image && image.trim().length > 0
     <!-- Global Shipping & Payment Info Pre-Footer Section -->
     {!hideTrustBanner && <ShippingAndPaymentSection />}
 
-    <!-- Minimalist Editorial Footer -->
-    <footer
-      class="border-t border-brand-dark/[0.08] mt-auto bg-[#FAFAFA]/70 backdrop-blur-xs"
-    >
-      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 md:py-16">
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
-          <!-- Column A: Brand Information (The Office BA) -->
-          <div class="md:col-span-6 space-y-3">
-            <span
-              class="text-sm font-bold tracking-tight text-brand-dark uppercase inline-flex items-baseline"
-            >
+    <!-- Footer: bloque oscuro inset -->
+    <footer class="mx-auto mt-auto w-full max-w-7xl px-3 pb-3 pt-2 sm:px-4 sm:pb-4">
+      <div class="rounded-tile bg-brand-dark px-5 py-9 text-brand-light sm:px-10 sm:py-14">
+        <div class="grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-12 md:gap-x-8">
+          <!-- Marca -->
+          <div class="col-span-2 space-y-4 md:col-span-5">
+            <span class="inline-flex items-baseline text-xl font-bold uppercase tracking-tight text-brand-sand sm:text-2xl">
               THE OFFICE
-              <sup
-                class="text-[8px] font-bold relative -top-1 ml-0.5 leading-none text-brand-dark"
-                >BA</sup
-              >
+              <sup class="relative -top-1.5 ml-0.5 text-xs font-bold leading-none text-brand-sand">BA</sup>
             </span>
-            <p
-              class="text-xs sm:text-sm text-brand-dark/65 max-w-sm leading-relaxed"
-            >
+            <p class="max-w-sm text-sm leading-relaxed text-brand-light/70">
               Productos 100% originales con stock inmediato. Las marcas en tendencia
               más solicitadas de indumentaria urbana y sneakers con envíos seguros a todo el país.
             </p>
           </div>
 
-          <!-- Column B: Atención al Cliente -->
-          <div class="md:col-span-3 space-y-3">
-            <h2
-              class="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/45"
-            >
-              Atención al Cliente
-            </h2>
-            <ul class="space-y-2">
+          <!-- Tienda -->
+          <nav class="space-y-1 md:col-span-2" aria-label="Tienda">
+            <h2 class="text-[13px] font-semibold text-brand-sand">Tienda</h2>
+            <ul>
+              <li><a href="/#recien-ingresados" class="inline-flex min-h-11 items-center gap-2.5 text-sm text-brand-light/70 transition-colors duration-150 hover:text-brand-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-sand">Recién ingresados</a></li>
+              <li><a href="/#catalogo" class="inline-flex min-h-11 items-center gap-2.5 text-sm text-brand-light/70 transition-colors duration-150 hover:text-brand-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-sand">Todo el catálogo</a></li>
+              <li><a href="/cart" class="inline-flex min-h-11 items-center gap-2.5 text-sm text-brand-light/70 transition-colors duration-150 hover:text-brand-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-sand">Carrito</a></li>
+            </ul>
+          </nav>
+
+          <!-- Ayuda -->
+          <nav class="space-y-1 md:col-span-2" aria-label="Ayuda">
+            <h2 class="text-[13px] font-semibold text-brand-sand">Ayuda</h2>
+            <ul>
+              <li><a href="/#envios-y-pagos" class="inline-flex min-h-11 items-center gap-2.5 text-sm text-brand-light/70 transition-colors duration-150 hover:text-brand-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-sand">Envíos y pagos</a></li>
+            </ul>
+          </nav>
+
+          <!-- Contacto (única entrada de WhatsApp del footer) -->
+          <div class="col-span-2 space-y-1 sm:col-span-1 md:col-span-3">
+            <h2 class="text-[13px] font-semibold text-brand-sand">Contacto</h2>
+            <ul>
               <li>
-                <a
-                  href={WHATSAPP_CONTACT_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="inline-flex items-center gap-2.5 py-1.5 text-xs sm:text-sm text-brand-dark/70 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 rounded-xs"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.75"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="shrink-0 text-brand-dark/65"
-                    aria-hidden="true"
-                  >
+                <a href={WHATSAPP_CONTACT_URL} target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center gap-2.5 text-sm text-brand-light/70 transition-colors duration-150 hover:text-brand-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-sand">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="shrink-0" aria-hidden="true">
                     <path d="M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9L3 21"></path>
-                    <path
-                      d="M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1a5 5 0 0 0 5 5h1a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1"
-                    ></path>
+                    <path d="M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1a5 5 0 0 0 5 5h1a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1"></path>
                   </svg>
-                  <span>Contactar por WhatsApp</span>
+                  <span>WhatsApp</span>
                 </a>
               </li>
-            </ul>
-          </div>
-
-          <!-- Column C: Redes Sociales -->
-          <div class="md:col-span-3 space-y-3">
-            <h2
-              class="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-dark/45"
-            >
-              Redes Sociales
-            </h2>
-            <ul class="space-y-2">
               <li>
-                <a
-                  href={SOCIAL_LINKS.instagram}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="inline-flex items-center gap-2.5 py-1.5 text-xs sm:text-sm text-brand-dark/70 hover:text-brand-dark transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 rounded-xs"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.75"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="shrink-0 text-brand-dark/65"
-                    aria-hidden="true"
-                  >
-                    <rect width="20" height="20" x="2" y="2" rx="5" ry="5"
-                    ></rect>
-                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"
-                    ></path>
+                <a href={SOCIAL_LINKS.instagram} target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center gap-2.5 text-sm text-brand-light/70 transition-colors duration-150 hover:text-brand-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-sand">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="shrink-0" aria-hidden="true">
+                    <rect width="20" height="20" x="2" y="2" rx="5" ry="5"></rect>
+                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
                     <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line>
                   </svg>
                   <span>Instagram</span>
@@ -194,31 +151,23 @@ const socialImage = image && image.trim().length > 0
         </div>
 
         <!-- Bottom bar -->
-        <div
-          class="mt-12 pt-6 border-t border-brand-dark/[0.06] flex flex-col sm:flex-row items-center justify-between gap-4"
-        >
-          <p class="text-[11px] text-brand-dark/40">
-            &copy; {new Date().getFullYear()} The Office BA. All rights reserved.
+        <div class="mt-10 flex flex-col items-start justify-between gap-2 border-t border-brand-light/15 pt-6 sm:flex-row sm:items-center sm:gap-4">
+          <p class="text-xs text-brand-light/70">
+            &copy; {new Date().getFullYear()} The Office BA. Todos los derechos reservados.
           </p>
-          <div class="flex items-center gap-3.5">
+          <div class="flex items-center gap-3">
+            <p class="text-xs text-brand-light/70">Buenos Aires, Argentina</p>
+            <span class="select-none text-xs text-brand-light/40" aria-hidden="true">/</span>
             <a
               href="/admin/login"
-              class="text-[11px] font-mono tracking-wider text-brand-dark/40 hover:text-brand-dark transition-colors duration-150 uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/30 rounded-xs"
+              class="inline-flex min-h-11 items-center rounded-full px-1 text-xs text-brand-light/70 transition-colors duration-150 hover:text-brand-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-sand"
             >
-              Admin Access
+              Admin
             </a>
-            <span
-              class="text-[11px] text-brand-dark/20 select-none"
-              aria-hidden="true">/</span
-            >
-            <p
-              class="text-[11px] font-mono tracking-wider text-brand-dark/30 uppercase"
-            >
-              Buenos Aires, AR
-            </p>
           </div>
         </div>
       </div>
     </footer>
+
   </body>
 </html>
