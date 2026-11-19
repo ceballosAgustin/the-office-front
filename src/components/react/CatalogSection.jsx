@@ -7,6 +7,7 @@ import {
   buildCatalogHref,
   parseCatalogParams,
   formatProductSize,
+  normalizeClothingSizeLabel,
   isSneakersCategory,
   isShoeSize,
   sortProductSizes,
@@ -235,12 +236,17 @@ export default function CatalogSection() {
   const { clothingSizes, sneakerSizes } = useMemo(() => {
     const clothing = [];
     const sneakers = [];
+    const seenClothing = new Set();
 
     (availableSizes || []).forEach((size) => {
       if (!size) return;
       if (isShoeSize(size)) {
         sneakers.push(size);
       } else {
+        // "xl" and "XL" are the same size: show it once (legacy lowercase data)
+        const key = String(size).trim().toUpperCase();
+        if (seenClothing.has(key)) return;
+        seenClothing.add(key);
         clothing.push(size);
       }
     });
@@ -886,7 +892,7 @@ export default function CatalogSection() {
                   onToggleSize={handleToggleSize}
                   expanded={showAllClothingSizes}
                   onToggleExpanded={() => setShowAllClothingSizes((prev) => !prev)}
-                  formatLabel={(size) => size}
+                  formatLabel={(size) => normalizeClothingSizeLabel(size)}
                   titlePrefix="Filtrar por talle"
                 />
               )}
@@ -944,7 +950,7 @@ export default function CatalogSection() {
           )}
           {selectedSizes.map((sz) => {
             const isShoe = isShoeSize(sz);
-            const display = isShoe ? formatProductSize(sz, 'sneakers') : sz;
+            const display = isShoe ? formatProductSize(sz, 'sneakers') : normalizeClothingSizeLabel(sz);
             return (
               <FilterChip
                 key={`chip-size-${sz}`}
@@ -1013,7 +1019,7 @@ export default function CatalogSection() {
                   onToggleSize={handleToggleSize}
                   expanded={showAllClothingSizes}
                   onToggleExpanded={() => setShowAllClothingSizes((prev) => !prev)}
-                  formatLabel={(size) => size}
+                  formatLabel={(size) => normalizeClothingSizeLabel(size)}
                   titlePrefix="Filtrar por talle"
                 />
               )}

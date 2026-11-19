@@ -2032,6 +2032,21 @@ export function isSneakersCategory(
  * - Preserves ambiguous historical sizes (e.g. EU sizes like "42", "40", "38" where num > 20) without assuming US or converting.
  * - Returns the original string for non-sneakers categories.
  */
+const SINGLE_SIZE_LABEL_KEYS = new Set(['unico', 'talle unico', 'one size', 'onesize', 'os']);
+
+/**
+ * Clothing/accessory sizes are always shown in uppercase ("xxl" → "XXL"), mirroring the
+ * backend ProductService.normalizeClothingSize. Single-size labels ("Único", "One Size")
+ * keep their original casing. Fixes legacy lowercase data on display without touching the DB.
+ */
+export function normalizeClothingSizeLabel(raw: string | number | null | undefined): string {
+  if (raw == null) return '';
+  const str = String(raw).trim();
+  if (!str) return '';
+  const key = str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  return SINGLE_SIZE_LABEL_KEYS.has(key) ? str : str.toUpperCase();
+}
+
 export function formatProductSize(
   rawSize: string | number | null | undefined,
   categoryOrSlug?:
@@ -2050,7 +2065,7 @@ export function formatProductSize(
   if (!str) return '';
 
   if (!isSneakersCategory(categoryOrSlug)) {
-    return str;
+    return normalizeClothingSizeLabel(str);
   }
 
   // Already has 'us' or 'US' suffix? (e.g., '7.5us', '7.5 US', '7.5US')

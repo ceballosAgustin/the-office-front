@@ -1,5 +1,9 @@
 import { useState, useCallback } from 'react';
-import { normalizeSneakerSizeValue, sortProductVariants } from '../../../../services/api';
+import {
+  normalizeClothingSizeLabel,
+  normalizeSneakerSizeValue,
+  sortProductVariants,
+} from '../../../../services/api';
 import {
   buildDefaultVariants,
   detectInitialSizingMode,
@@ -140,7 +144,9 @@ export default function useProductVariants({ isSneakers }) {
   const addVariant = (sizeToAdd, stockToAdd = DEFAULT_STOCK_ON_ADD) => {
     setFeedbackError(null);
     let normalized = String(sizeToAdd || '').trim();
-    if (isSneakers) normalized = normalizeSneakerSizeValue(normalized);
+    normalized = isSneakers
+      ? normalizeSneakerSizeValue(normalized)
+      : normalizeClothingSizeLabel(normalized); // "xxl" → "XXL" (backend normalizes too)
     if (!normalized) {
       setFeedbackError(
         isSneakers

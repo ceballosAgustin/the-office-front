@@ -5,6 +5,7 @@ import Icon from '../ui/icons';
 import { inputClass } from '../ui/Field';
 import { cx } from '../ui/cx';
 import { QUICK_SIZES, QUICK_SNEAKER_SIZES } from './productSizing';
+import { normalizeClothingSizeLabel } from '../../../../services/api';
 
 const SIZING_OPTIONS = [
   { value: 'multi', label: 'Con talles' },
@@ -187,7 +188,7 @@ export default function ProductVariantsCard({ vm, isSneakers, disabled = false }
                           className="inline-flex h-10 min-w-12 items-center justify-center rounded-ctl bg-brand-dark px-3 text-sm font-semibold text-brand-light"
                           title="Talle guardado: no se puede renombrar. Desactivalo y creá uno nuevo si hace falta."
                         >
-                          {v.size}
+                          {normalizeClothingSizeLabel(v.size)}
                         </span>
                       ) : (
                         <input
@@ -197,7 +198,7 @@ export default function ProductVariantsCard({ vm, isSneakers, disabled = false }
                           value={v.size}
                           onChange={(e) => vm.changeSize(v.localKey, e.target.value)}
                           aria-label="Nombre del talle nuevo"
-                          className="form-input h-10 w-24 px-2.5 text-sm font-semibold"
+                          className="form-input h-10 w-24 px-2.5 text-sm font-semibold uppercase"
                         />
                       )}
                       {v.id == null && <span className="text-xs text-ink-muted">Nuevo</span>}
@@ -241,7 +242,7 @@ export default function ProductVariantsCard({ vm, isSneakers, disabled = false }
             {vm.inactiveVariants.map((v) => (
               <li key={v.localKey} className="flex items-center justify-between gap-3 p-2.5 sm:p-3">
                 <span className="min-w-0 text-sm text-ink-muted">
-                  <span className="font-semibold text-brand-dark line-through">{v.size}</span> · stock guardado {v.stock}
+                  <span className="font-semibold text-brand-dark line-through">{normalizeClothingSizeLabel(v.size)}</span> · stock guardado {v.stock}
                 </span>
                 <Button size="sm" variant="secondary" disabled={disabled} onClick={() => vm.reactivate(v.localKey)}>
                   Reactivar
