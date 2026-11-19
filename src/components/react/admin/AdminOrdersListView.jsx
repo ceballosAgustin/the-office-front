@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { rowLinkProps } from './ui/rowLink';
 import AdminShell from './AdminShell';
 import OrderStatusBadge from './OrderStatusBadge';
 import AdminOrderDetailView from './AdminOrderDetailView';
@@ -378,12 +379,13 @@ export default function AdminOrdersListView() {
                     return (
                       <tr
                         key={order.id}
-                        className="relative transition-colors hover:bg-sunken/70"
+                        {...rowLinkProps(`/admin/orders/detail?id=${order.id}`)}
+                        className="cursor-pointer transition-colors hover:bg-sunken/70"
                       >
                         <td className="px-4 py-3">
                           <a
                             href={`/admin/orders/detail?id=${order.id}`}
-                            className="font-medium text-brand-dark after:absolute after:inset-0"
+                            className="font-medium text-brand-dark"
                           >
                             {name || (
                               <span className="font-normal italic text-ink-muted">

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { rowLinkProps } from './ui/rowLink';
 import AdminShell from './AdminShell';
 import InquiryStatusBadge from './InquiryStatusBadge';
 import Button from './ui/Button';
@@ -201,12 +202,13 @@ export default function AdminDashboardView() {
                       return (
                         <tr
                           key={inq.id}
-                          className="relative transition-colors hover:bg-sunken/70"
+                          {...rowLinkProps(`/admin/inquiries/${inq.id}`)}
+                        className="cursor-pointer transition-colors hover:bg-sunken/70"
                         >
                           <td className="px-4 py-3">
                             <a
                               href={`/admin/inquiries/${inq.id}`}
-                              className="font-medium text-brand-dark after:absolute after:inset-0"
+                              className="font-medium text-brand-dark"
                             >
                               {name || (
                                 <span className="font-normal italic text-ink-muted">

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { rowLinkProps } from './ui/rowLink';
 import AdminShell from './AdminShell';
 import Button from './ui/Button';
 import PageHeader from './ui/PageHeader';
@@ -434,7 +435,8 @@ export default function AdminProductsListView() {
                     return (
                       <tr
                         key={prod.id}
-                        className="relative transition-colors hover:*:bg-sunken/70"
+                        {...rowLinkProps(`/admin/products/${prod.id}/edit`)}
+                        className="cursor-pointer transition-colors hover:*:bg-sunken/70"
                       >
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-3">
@@ -442,7 +444,7 @@ export default function AdminProductsListView() {
                             <div className="min-w-0">
                               <a
                                 href={`/admin/products/${prod.id}/edit`}
-                                className="block max-w-[22rem] truncate font-medium text-brand-dark after:absolute after:inset-0"
+                                className="block max-w-[22rem] truncate font-medium text-brand-dark"
                               >
                                 {prod.title || 'Sin título'}
                               </a>
